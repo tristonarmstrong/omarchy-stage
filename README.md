@@ -9,8 +9,9 @@ of large thumbnails, and more columns appear only when a column gets crowded,
 each one further out a bit smaller.
 
 Prefer the thumbnails out of the way? `cfg.thumb_side = "left"` (or `"right"`)
-keeps them all on that edge, and the middle window takes the whole rest of the
-screen.
+keeps them all on that edge in a single column, and the middle window takes the
+whole rest of the screen, so narrowing it stops where the thumbnails stop
+getting bigger.
 
 Thumbnails keep their spot. Bringing a window into the middle swaps it with
 the current middle window, and nothing else moves.

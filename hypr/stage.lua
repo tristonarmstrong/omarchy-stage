@@ -435,11 +435,6 @@ hl.layout.register("stage", {
     local strip = side_geometry(area, ws_id)
     local left_w = (cfg.thumb_side == "left" or cfg.thumb_side == "both") and strip or 0
     local right_w = (cfg.thumb_side == "right" or cfg.thumb_side == "both") and strip or 0
-    local mid_w = area.w - left_w - right_w
-    if middle then
-      show_full(middle)
-      middle:place({ x = area.x + left_w, y = area.y, w = mid_w, h = area.h })
-    end
 
     -- Thumbnails are miniatures of how the window looks in the middle at its
     -- default width, so resizing the middle doesn't change their shape.
@@ -457,6 +452,23 @@ hl.layout.register("stage", {
       list[#list + 1] = t
     end
     local aspect = thumb_w / area.h
+
+    -- The column is only ever as wide as its stack of thumbnails, so give the
+    -- rest to the middle window. That is what puts a floor under the middle
+    -- window's width: narrowing it stops where the column can't get wider, so
+    -- no band of wallpaper is left between them.
+    if cfg.thumb_side == "left" and #left > 0 then
+      left_w = math.min(left_w, area.h / #left * aspect)
+    elseif cfg.thumb_side == "right" and #right > 0 then
+      right_w = math.min(right_w, area.h / #right * aspect)
+    end
+
+    local mid_w = area.w - left_w - right_w
+    if middle then
+      show_full(middle)
+      middle:place({ x = area.x + left_w, y = area.y, w = mid_w, h = area.h })
+    end
+
     if cfg.thumb_side == "left" then
       fill_column(left, area, area.x, left_w, 1, aspect)
     elseif cfg.thumb_side == "right" then
