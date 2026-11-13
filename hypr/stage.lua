@@ -1,9 +1,10 @@
 -- Stage: a Stage Manager-style layout for Hyprland.
 --
--- The window you're using sits alone in the middle of the screen. Every
--- other window on the workspace becomes a thumbnail in columns on the left
--- and right. Thumbnails are as big as the space allows: a few windows get one
--- column of large thumbnails, and more columns appear only when needed.
+-- The window you're using sits in the middle of the screen (or next to the
+-- thumbnails, with `thumb_side` set to one side only). Every other window on
+-- the workspace becomes a thumbnail in columns on the left and right, or on
+-- just one side. Thumbnails are as big as the space allows: a few windows get
+-- one column of large thumbnails, and more columns appear only when needed.
 --
 -- Thumbnails keep their spot. Bringing a window into the middle only swaps
 -- it with the current middle window; nothing else moves.
@@ -48,6 +49,13 @@ local cfg = {
   decay = 0.75, -- each thumbnail column further out is this much narrower
   center_step_min = 0.25, -- the middle window can be resized between these shares of the width
   center_step_max = 0.92,
+
+  -- "both", or "left"/"right" to keep every thumbnail on one side. A single
+  -- side pins its strip to that edge and the middle window takes the whole
+  -- rest of the screen, so it is one strip wider. The strip is still one
+  -- side's worth of the space the share above leaves, so SUPER + - / = widen
+  -- the middle and narrow the thumbnails as before.
+  thumb_side = "both",
 
   thumb_opacity = 0.72, -- thumbnails at rest; the selected or hovered one is fully opaque
   select_border = 4, -- border (px) on thumbnails; only the selected one's is visible
@@ -402,11 +410,15 @@ hl.layout.register("stage", {
     end
 
     local ws_id = windows[1] and windows[1].workspace.id
-    local side_w = side_geometry(area, ws_id)
-    local mid_w = area.w - 2 * side_w
+    -- With thumbnails on both sides the middle window is centred between two
+    -- equal strips; with one side it takes everything that strip leaves.
+    local strip = side_geometry(area, ws_id)
+    local left_w = (cfg.thumb_side == "left" or cfg.thumb_side == "both") and strip or 0
+    local right_w = (cfg.thumb_side == "right" or cfg.thumb_side == "both") and strip or 0
+    local mid_w = area.w - left_w - right_w
     if middle then
       show_full(middle)
-      middle:place({ x = area.x + side_w, y = area.y, w = mid_w, h = area.h })
+      middle:place({ x = area.x + left_w, y = area.y, w = mid_w, h = area.h })
     end
 
     -- Thumbnails are miniatures of how the window looks in the middle at its
@@ -417,14 +429,24 @@ hl.layout.register("stage", {
     end
 
     -- Alternate sides so both stay balanced; slot order fixes the positions.
+    -- A single side keeps slot order, which is then also the order on screen.
     local left, right = {}, {}
     for k, t in ipairs(side) do
-      local list = k % 2 == 1 and left or right
+      local to_left = cfg.thumb_side == "left" or (cfg.thumb_side == "both" and k % 2 == 1)
+      local list = to_left and left or right
       list[#list + 1] = t
     end
     local aspect = thumb_w / area.h
-    fill_side(left, area, area.x + side_w, side_w, -1, aspect)
-    fill_side(right, area, area.x + area.w - side_w, side_w, 1, aspect)
+    if cfg.thumb_side == "left" then
+      -- Anchored at the edge, so any room a column can't use stays next to
+      -- the middle window instead of pushing the thumbnails inwards.
+      fill_side(left, area, area.x, left_w, 1, aspect)
+    elseif cfg.thumb_side == "right" then
+      fill_side(right, area, area.x + area.w, right_w, -1, aspect)
+    else
+      fill_side(left, area, area.x + left_w, left_w, -1, aspect)
+      fill_side(right, area, area.x + area.w - right_w, right_w, 1, aspect)
+    end
   end),
 
   layout_msg = function(_, msg)
@@ -770,9 +792,16 @@ local switching = nil -- { ws = workspace id, p = position in the order } while 
 local switch_gen = 0 -- for the no-plugin fallback timer
 
 -- Slot indices in switcher order. Slots alternate sides (2 left, 3 right,
--- 4 left, ...) and each side fills its inner column first.
+-- 4 left, ...) and each side fills its inner column first. With the
+-- thumbnails on a single side, slot order already is the on-screen order.
 local function switch_order(n)
   local order = {}
+  if cfg.thumb_side ~= "both" then
+    for k = 2, n do
+      order[#order + 1] = k
+    end
+    return order
+  end
   for start = 2, 3 do
     for k = start, n, 2 do
       order[#order + 1] = k
