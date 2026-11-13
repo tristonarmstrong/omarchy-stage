@@ -89,6 +89,10 @@ middle-of-screen size and draws that content scaled down. Clicking a thumbnail
 only brings it into the middle; neither the button press nor its release is
 sent to the app. Click again in the centered window to interact with it.
 
+The miniatures need Hyprland's function hooks, which are x86_64 only: on other
+architectures the plugin cannot load, the layout notices once per boot, and
+thumbnails stay plain windows.
+
 Hyprland plugins must be built against the exact Hyprland version that's
 running, so both install methods rebuild it when the `hyprland` package
 changes. If a build fails, you get a notification, stage keeps working with

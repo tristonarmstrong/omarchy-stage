@@ -20,6 +20,19 @@ notify() {
   echo "stage: $1"
 }
 
+# Hyprland's function hooks are x86_64 only: CFunctionHook::hook() returns false
+# on every other architecture, so the thumbnails plugin can never load there.
+# Build and load it only where it can work, and say so once per boot.
+hooks_work=1
+[[ $(uname -m) == x86_64 ]] || hooks_work=0
+
+no_hooks() {
+  local flag="${TMPDIR:-/tmp}/stage-no-hooks-$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo boot)"
+  [[ -f $flag ]] && return 0
+  : >"$flag" 2>/dev/null || true
+  notify "Miniature thumbnails need x86_64: Hyprland's function hooks do not work on $(uname -m). Stage runs with plain thumbnails."
+}
+
 lua_quote() { # single-quoted Lua string
   local s=${1//\\/\\\\}
   printf "'%s'" "${s//\'/\\\'}"
@@ -82,10 +95,14 @@ load_thumbs() {
 case "${1:-start}" in
   start)
     load_stage # usable right away; the build can take a while
-    build_thumbs
-    # Loading a plugin re-runs the config (fresh Lua state), so load stage
-    # again afterwards. Already loaded, it's a no-op.
-    load_thumbs && load_stage
+    if (( hooks_work )); then
+      build_thumbs
+      # Loading a plugin re-runs the config (fresh Lua state), so load stage
+      # again afterwards. Already loaded, it's a no-op.
+      load_thumbs && load_stage
+    else
+      no_hooks
+    fi
     ;;
   load)
     load_stage
