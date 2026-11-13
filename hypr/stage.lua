@@ -50,11 +50,11 @@ local cfg = {
   center_step_min = 0.25, -- the middle window can be resized between these shares of the width
   center_step_max = 0.92,
 
-  -- "both", or "left"/"right" to keep every thumbnail on one side. A single
-  -- side pins its strip to that edge and the middle window takes the whole
-  -- rest of the screen, so it is one strip wider. The strip is still one
-  -- side's worth of the space the share above leaves, so SUPER + - / = widen
-  -- the middle and narrow the thumbnails as before.
+  -- "both", or "left"/"right" to keep every thumbnail on one side, stacked in a
+  -- single column against that edge. The strip is at most one side's worth of
+  -- the space the share above leaves, and no wider than the column needs, so
+  -- the middle window takes the rest and never shrinks past it. SUPER + - / =
+  -- still resize the middle window; see docs/one-sided-layout.md.
   thumb_side = "both",
 
   thumb_opacity = 0.72, -- thumbnails at rest; the selected or hovered one is fully opaque

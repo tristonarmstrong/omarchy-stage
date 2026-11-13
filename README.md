@@ -11,7 +11,8 @@ each one further out a bit smaller.
 Prefer the thumbnails out of the way? `cfg.thumb_side = "left"` (or `"right"`)
 keeps them all on that edge in a single column, and the middle window takes the
 whole rest of the screen, so narrowing it stops where the thumbnails stop
-getting bigger.
+getting bigger. [How the one-sided layout works](docs/one-sided-layout.md)
+has the details.
 
 Thumbnails keep their spot. Bringing a window into the middle swaps it with
 the current middle window, and nothing else moves.
