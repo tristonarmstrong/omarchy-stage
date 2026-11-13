@@ -72,6 +72,9 @@ one slot instead of taking one each:
 - With fewer entries the column needs less width, so the floor relaxes: three
   apps of three windows each leave the middle window wider than nine windows
   spread over nine apps.
+- The column holds `cfg.stack_max` apps (8). Past that the least recently used
+  apps are parked behind the middle window, the way Stage Manager lets older
+  apps fall off the side of the screen: still on `ALT + TAB`, not in the way.
 
 App identity is the window's `class`, the only app concept Hyprland has. Two
 Chromium app-mode windows therefore count as one app.
@@ -118,6 +121,24 @@ not a window of the workspace any more, so it is not in the column and not
 parked behind the middle either: `ALT + TAB` and the layout stop seeing it
 until it comes back. Quitting an app empties its stack, and closing the last
 window of an app removes the slot altogether.
+
+## What Stage Manager does that this does not
+
+Kept here so the gaps are a decision rather than an oversight:
+
+- **A Control Center switch.** Stage is a layout: `SUPER + L` cycles to it, and
+  the `cfg` table is the configuration. A toggle would be a second way to say
+  the same thing.
+- **A preview of an app's windows from its sidebar icon.** There is no overlay
+  to draw one in, and on this machine thumbnails show no live content either
+  (see the limitation below). The equivalent here is `ALT + TAB`, which brings
+  each window forward in place.
+- **Dragging apps together into sets.** This layout is auto-tiling: there is no
+  canvas to drop onto, and nothing in it depends on the pointer dragging a
+  window. Clicks and keys only.
+- **Clicking the desktop to clear the stage.** Hyprland has no desktop surface.
+  The scratchpad (`SUPER + S`, `SUPER + ALT + S`) already empties the screen
+  when that is what you want.
 
 ## Limitations
 

@@ -107,9 +107,9 @@ folder, or `~/.config/hypr/stagethumbs/` for a manual install).
 
 The `cfg` table at the top of `hypr/stage.lua` holds the knobs: which side(s)
 the thumbnails are on, whether apps stack (`stack_by_app`, with `stack_offset`
-and `stack_spread` for the pile), middle window aspect and min/max share of the
-screen, thumbnail opacity, the selection border width and how long the swap
-highlight lasts. With the plugin, edit
+and `stack_spread` for the pile and `stack_max` for how many apps the column
+holds), middle window aspect and min/max share of the screen, thumbnail
+opacity, the selection border width and how long the swap highlight lasts. With the plugin, edit
 `~/.config/omarchy/plugins/io.github.sulejman.stage/hypr/stage.lua` and run
 `hyprctl reload`. With a manual install, edit `~/.config/hypr/stage.lua`
 (Hyprland reloads on save). Updates replace the file, so keep a note of your

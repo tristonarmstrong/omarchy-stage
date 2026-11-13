@@ -93,6 +93,19 @@ do
   check(t.middle().w > floor_width, "one press back moves it immediately")
 end
 
+-- The column holds a limited number of apps; the rest park behind the middle.
+do
+  local classes = { "chromium" }
+  for i = 1, 11 do
+    classes[#classes + 1] = "app" .. i
+  end
+  local t = h.load({ classes = classes }):recalc()
+  check(#t.entries() == 8, "the column keeps eight apps")
+  check(t.parked() == 3, "the three oldest apps park behind the middle")
+  local ok, why = t.in_bounds()
+  check(ok, "the kept column stays in the strip" .. (ok and "" or (": " .. tostring(why))))
+end
+
 -- The two-sided layout keeps one entry per window: no stacks, no parking.
 do
   local t = h.load({ classes = { "chromium", "foot", "foot" }, thumb_side = "both" }):recalc()

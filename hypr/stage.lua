@@ -63,6 +63,7 @@ local cfg = {
   stack_by_app = true,
   stack_offset = 8, -- how far each window behind the front of its stack shows
   stack_spread = 3, -- ...for at most this many layers; deeper ones share the back
+  stack_max = 8, -- most apps the column holds; the rest wait behind the middle window
 
   thumb_opacity = 0.72, -- thumbnails at rest; the selected or hovered one is fully opaque
   select_border = 4, -- border (px) on thumbnails; only the selected one's is visible
@@ -549,11 +550,42 @@ hl.layout.register("stage", {
           visible[#visible + 1] = t
         end
       end
+      local entries = stacks(visible, ws_id)
+      -- There is only so much column: keep the apps used most recently and
+      -- park the rest behind the middle window, the way Stage Manager drops
+      -- the oldest apps off the side of the screen.
+      if cfg.stack_max > 0 and #entries > cfg.stack_max then
+        local age = {}
+        for i, entry in ipairs(entries) do
+          age[#age + 1] = { entry = entry, rank = rank(ws_id, entry.targets[1].window.stable_id), seat = i }
+        end
+        table.sort(age, function(a, b)
+          if a.rank ~= b.rank then
+            return a.rank < b.rank
+          end
+          return a.seat > b.seat
+        end)
+        local keep = {}
+        for i = 1, cfg.stack_max do
+          keep[age[i].entry] = true
+        end
+        local kept = {}
+        for _, entry in ipairs(entries) do
+          if keep[entry] then
+            kept[#kept + 1] = entry
+          else
+            for _, t in ipairs(entry.targets) do
+              parked[#parked + 1] = t
+            end
+          end
+        end
+        entries = kept
+      end
       for _, t in ipairs(parked) do
         show_full(t)
       end
       local into = cfg.thumb_side == "left" and left or right
-      for _, entry in ipairs(stacks(visible, ws_id)) do
+      for _, entry in ipairs(entries) do
         into[#into + 1] = entry
       end
     else
