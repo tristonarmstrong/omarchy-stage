@@ -1329,6 +1329,11 @@ end
 hl.unbind("SUPER + L")
 o.bind("SUPER + L", "Cycle workspace layout (dwindle, scrolling, stage)", guarded(M.cycle))
 o.bind("SUPER + Z", "Stage: swap focused thumbnail into the middle", guarded(M.promote))
+-- Google Messages (SUPER + SHIFT + CTRL + G) and Activity (SUPER + SHIFT + T)
+-- own these two by default; grouping and tiling are worth more here, and both
+-- shortcuts come back by deleting these lines.
+hl.unbind("SUPER + SHIFT + CTRL + G")
+hl.unbind("SUPER + SHIFT + T")
 o.bind("SUPER + CTRL + G", "Stage: group the focused window with the middle one", guarded(M.group))
 o.bind("SUPER + CTRL + SHIFT + G", "Stage: take the focused window out of its group", guarded(M.ungroup))
 o.bind("SUPER + SHIFT + T", "Stage: tile or stack the group in the middle", guarded(M.group_tile))

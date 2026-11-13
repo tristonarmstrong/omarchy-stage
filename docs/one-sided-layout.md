@@ -75,6 +75,11 @@ Two ways to use it, depending on what has focus:
 
 Groups are per workspace and last as long as their windows do.
 
+Two Omarchy shortcuts step aside for these keys: Google Messages
+(`SUPER + SHIFT + CTRL + G`) and Activity (`SUPER + SHIFT + T`) are unbound by
+the plugin on load. Delete the two `hl.unbind` lines next to the bindings in
+`stage.lua` to give them back.
+
 **In the column** a group is one slot holding a pile: its windows share the
 slot's corner, the one used last at the front with the smallest box, and each
 one behind it a `cfg.stack_offset` (8 px) wider and taller, up to
