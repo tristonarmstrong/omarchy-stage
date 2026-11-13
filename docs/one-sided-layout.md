@@ -27,8 +27,8 @@ be within that strip:
 | thumbnail width | height × `aspect` |
 | vertical position | centred in the screen |
 
-`count` is the number of **apps** in the column, not the number of windows: the
-windows of one app share a slot (see below).
+`count` is the number of **entries** in the column, not the number of windows:
+windows you have grouped share a slot (see below).
 
 `aspect` is the middle window's shape at its default width,
 `area.w * default_share(area) / area.h`, so a thumbnail is a scaled copy of the
@@ -46,38 +46,50 @@ less width). `SUPER + =` still widens it, which shrinks the thumbnails.
 At the default share on a 1512x982 output (a 1492x962 tiling area), the middle
 window is 1223 px wide and the strip 269 px:
 
-| apps in the column | each slot | middle window |
+| entries in the column | each slot | middle window |
 | --- | --- | --- |
 | 1 to 3 | 269 by 271 | 1223 |
 | 4 | 239 by 240 | 1253 |
 | 6 | 159 by 159 | 1333 |
 | 8 | 119 by 119 | 1373 |
 
-## Stacks: one slot per app
+## Groups
 
-With `cfg.stack_by_app` on (the default in this fork), an app's windows share
-one slot instead of taking one each:
+Nothing groups by itself: two windows of the same app are two slots. A group is
+something you make:
 
-- The windows keep the slot's corner. The one used last is the **front** and
-  has the smallest box; each one behind it is a `cfg.stack_offset` (8 px) wider
-  and taller, up to `cfg.stack_spread` (3) layers, so the pile shows as a few
-  pixels of edge. A fourth window and beyond share the back of the pile.
-- Hyprland draws the window focused last on top, so the front of the pile has
-  to be the window used last. The layout tracks that per workspace where the
-  swaps happen; if it were wrong, a pile would hide itself behind its own back.
-- The app in the middle is **pulled out of the column**, the way Stage Manager
-  does: its other windows sit in the middle window's box behind it. They stay
-  on `ALT + TAB`, and focusing one brings it to the front in place, so cycling
-  an app's windows happens in the primary zone rather than in the strip.
-- With fewer entries the column needs less width, so the floor relaxes: three
-  apps of three windows each leave the middle window wider than nine windows
-  spread over nine apps.
-- The column holds `cfg.stack_max` apps (8). Past that the least recently used
-  apps are parked behind the middle window, the way Stage Manager lets older
-  apps fall off the side of the screen: still on `ALT + TAB`, not in the way.
+| key | what it does |
+| --- | --- |
+| `SUPER + CTRL + G` | put the focused window into the group in the middle, starting the group with the middle window |
+| `SUPER + CTRL + SHIFT + G` | take the focused window back out; a group of one is just a window again |
+| `SUPER + SHIFT + T` | tile the group in the middle, or stack it again |
 
-App identity is the window's `class`, the only app concept Hyprland has. Two
-Chromium app-mode windows therefore count as one app.
+So the flow is: bring one window into the middle, focus another thumbnail, press
+`SUPER + CTRL + G`, and the two are now one entry. Groups are per workspace and
+last as long as their windows do.
+
+**In the column** a group is one slot holding a pile: its windows share the
+slot's corner, the one used last at the front with the smallest box, and each
+one behind it a `cfg.stack_offset` (8 px) wider and taller, up to
+`cfg.stack_spread` (3) layers. Hyprland draws the window focused last on top,
+so the front has to be the window used last; the layout tracks that per
+workspace where the swaps happen. A pile that got this wrong would hide behind
+its own back.
+
+**In the middle** the group leaves the column entirely and takes the primary
+zone, in one of two modes:
+
+- **stacked** (default): the front window at full size, its group's other
+  windows in the same box behind it. `ALT + TAB` walks them and brings each one
+  forward in place, so switching between the full versions of a group's windows
+  happens in the primary zone.
+- **tiled** (`SUPER + SHIFT + T`): the primary zone splits between the group's
+  windows — side by side for two or three, a grid for more — so a group of
+  terminals can all be watched at once.
+
+The column holds `cfg.stack_max` entries (8). Past that the least recently used
+ones are parked behind the middle window, still on `ALT + TAB`, the way Stage
+Manager lets older apps fall off the side of the screen.
 
 ## Keys
 
@@ -92,11 +104,11 @@ side changes behaviour:
   `SUPER + =` from the widest middle window to the floor, and no more.
 - `ALT + TAB` walks the single column from top to bottom instead of visiting
   the left side and then the right, so the switcher follows what is on screen.
-  The app in the middle is in the walk too, which is how its parked windows
-  come forward.
-- Clicking a stack brings its front window into the middle, which also pulls
-  that app out of the column. Moving between the windows of the app now in the
-  middle is `ALT + TAB`.
+  The window in the middle is in the walk too, which is how its group's other
+  windows and the parked ones come forward.
+- Clicking a pile brings its front window into the middle, which also pulls the
+  rest of that group out of the column. Moving between the windows of the group
+  now in the middle is `ALT + TAB`, or tiling it with `SUPER + SHIFT + T`.
 
 `switch_order` handles that: with `thumb_side` set, slot order is already the
 order on screen, so it walks slots 2..n.
@@ -119,8 +131,8 @@ does not need to know about it.
 A window moved to a special workspace (the scratchpad, `SUPER + ALT + S`) is
 not a window of the workspace any more, so it is not in the column and not
 parked behind the middle either: `ALT + TAB` and the layout stop seeing it
-until it comes back. Quitting an app empties its stack, and closing the last
-window of an app removes the slot altogether.
+until it comes back. Closing the last window of a group removes the entry, and
+a group that is down to one window is a window again.
 
 ## What Stage Manager does that this does not
 
@@ -133,9 +145,10 @@ Kept here so the gaps are a decision rather than an oversight:
   to draw one in, and on this machine thumbnails show no live content either
   (see the limitation below). The equivalent here is `ALT + TAB`, which brings
   each window forward in place.
-- **Dragging apps together into sets.** This layout is auto-tiling: there is no
-  canvas to drop onto, and nothing in it depends on the pointer dragging a
-  window. Clicks and keys only.
+- **Dragging apps together into sets.** Sets exist here, but they are made with
+  `SUPER + CTRL + G` rather than by dragging: this layout is auto-tiling, there
+  is no canvas to drop onto, and nothing in it depends on the pointer dragging
+  a window.
 - **Clicking the desktop to clear the stage.** Hyprland has no desktop surface.
   The scratchpad (`SUPER + S`, `SUPER + ALT + S`) already empties the screen
   when that is what you want.
@@ -148,6 +161,10 @@ Kept here so the gaps are a decision rather than an oversight:
 - The pile shows as a few pixels of edge, so it reads better with a wallpapered
   background than against a busy window; there is no badge to say how deep it
   is.
+- A group belongs to one workspace and is forgotten when its windows close or
+  the session restarts, like the slot order itself.
+- The group in the middle is the anchor for `SUPER + CTRL + G`: to group two
+  windows you bring one into the middle first, rather than selecting two.
 - Miniature thumbnails (the `stagethumbs` plugin) need Hyprland's function
   hooks, which only exist on x86_64. On other architectures the plugin cannot
   load, `stage-service.sh` notices once per boot, and thumbnails stay plain

@@ -81,7 +81,7 @@ function H.load(opts)
     layout = { register = function(_, c) layout = c end },
     on = function() end,
     timer = function() end,
-    get_active_window = function() return windows[1] end,
+    get_active_window = function() return state.active or windows[1] end,
     get_active_workspace = function() return ws end,
     get_workspace_windows = function() return windows end,
     get_config = function() return {} end,
@@ -155,26 +155,64 @@ function H.load(opts)
     return t
   end
 
+  -- Pretend the given window (1-based) has focus, the way clicking it would.
+  function t.set_active(i)
+    state.active = windows[i]
+    return t
+  end
+
+  function t.group()
+    M.group()
+    return t
+  end
+
+  function t.ungroup()
+    M.ungroup()
+    return t
+  end
+
+  function t.tile()
+    M.group_tile()
+    return t
+  end
+
   function t.middle()
     return targets[1].box
   end
 
-  -- One entry per slot: windows that share the same corner. Parked windows
-  -- sit in the middle window's box and are not entries.
+  -- The window in the middle, according to the layout's slot order.
+  function t.middle_id()
+    local list = M.slots(1)
+    return list and list[1]
+  end
+
+  function t.middle()
+    local id = t.middle_id()
+    for _, tg in ipairs(targets) do
+      if tg.window.stable_id == id then
+        return tg.box
+      end
+    end
+    return targets[1].box
+  end
+
+  -- Column entries: windows whose box starts at the strip's edge, grouped by
+  -- the corner they share. Parked windows and the primary zone are excluded.
   function t.entries()
-    local m = t.middle()
     local by_corner, order = {}, {}
-    for i = 2, #targets do
-      local b = targets[i].box
-      local parked = b.x == m.x and b.y == m.y and b.w == m.w
-      if not parked then
+    for i, tg in ipairs(targets) do
+      local b = tg.box
+      -- A lone middle window fills the area and also starts at the strip's
+      -- edge, so anything as wide as the area is the primary zone.
+      local in_column = b.x == t.areas.x and b.w < t.areas.w - 1
+      if in_column then
         local key = string.format("%.0f:%.0f", b.x, b.y)
         if not by_corner[key] then
           by_corner[key] = { x = b.x, y = b.y, targets = {}, w = 0 }
           order[#order + 1] = key
         end
         by_corner[key].w = math.max(by_corner[key].w, b.w)
-        by_corner[key].targets[#by_corner[key].targets + 1] = targets[i]
+        by_corner[key].targets[#by_corner[key].targets + 1] = tg
       end
     end
     table.sort(order, function(a, b) return by_corner[a].y < by_corner[b].y end)
@@ -185,26 +223,34 @@ function H.load(opts)
     return out
   end
 
-  -- How many columns the entries sit in: one for a single side.
+  -- How many columns the thumbnails sit in: one for a single side, two for the
+  -- two-sided layout.
   function t.columns()
+    local m = t.middle()
+    local mid = t.middle_id()
     local seen, n = {}, 0
-    for _, e in ipairs(t.entries()) do
-      local key = math.floor(e.x)
-      if not seen[key] then
-        seen[key] = true
-        n = n + 1
+    for _, tg in ipairs(targets) do
+      local b = tg.box
+      local parked = tg.window.stable_id ~= mid and b.x == m.x and b.y == m.y and b.w == m.w
+      if tg.window.stable_id ~= mid and not parked then
+        local key = math.floor(b.x)
+        if not seen[key] then
+          seen[key] = true
+          n = n + 1
+        end
       end
     end
     return n
   end
 
-  -- Thumbnail boxes that share the middle window's box: parked windows.
+  -- Windows other than the middle that share the middle window's box.
   function t.parked()
     local m = t.middle()
+    local mid = t.middle_id()
     local n = 0
-    for i = 2, #targets do
-      local b = targets[i].box
-      if b.x == m.x and b.y == m.y and b.w == m.w then
+    for _, tg in ipairs(targets) do
+      local b = tg.box
+      if tg.window.stable_id ~= mid and b.x == m.x and b.y == m.y and b.w == m.w then
         n = n + 1
       end
     end

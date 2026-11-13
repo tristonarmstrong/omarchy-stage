@@ -57,13 +57,14 @@ local cfg = {
   -- still resize the middle window; see docs/one-sided-layout.md.
   thumb_side = "both",
 
-  -- One slot per app instead of one per window: the windows of an app share a
-  -- slot, fanned a few pixels apart, and the one used last is the front of the
-  -- pile. On in this fork; an upstream patch would ship it off.
-  stack_by_app = true,
-  stack_offset = 8, -- how far each window behind the front of its stack shows
+  -- Windows are their own slot until you group them: SUPER + CTRL + G puts the
+  -- focused window into the middle window's group, SUPER + CTRL + SHIFT + G
+  -- takes it out, and SUPER + SHIFT + T tiles the group in the middle instead
+  -- of stacking it. A group's windows share one slot, fanned a few pixels
+  -- apart, the one used last at the front of the pile.
+  stack_offset = 8, -- how far each window behind the front of its pile shows
   stack_spread = 3, -- ...for at most this many layers; deeper ones share the back
-  stack_max = 8, -- most apps the column holds; the rest wait behind the middle window
+  stack_max = 8, -- most groups and windows the column holds; the rest wait behind the middle
 
   thumb_opacity = 0.72, -- thumbnails at rest; the selected or hovered one is fully opaque
   select_border = 4, -- border (px) on thumbnails; only the selected one's is visible
@@ -215,21 +216,99 @@ local function sync(list, windows, focused_id)
   end
 end
 
--- The app a window belongs to. Hyprland has no app concept beyond the class
--- the client sets, so two Chromium app-mode windows count as one app.
-local function app_key(w)
-  if not w then
-    return ""
-  end
-  if type(w.class) == "string" and w.class ~= "" then
-    return w.class
-  end
-  return type(w.title) == "string" and w.title or ""
+-- Groups are sets of windows the user put together: they share one column
+-- entry and one place in the middle. Nothing is grouped until asked for, so a
+-- second window of the same app is simply a second window.
+local groups = {}
+local group_seq = 0
+
+local function groups_for(ws_id)
+  groups[ws_id] = groups[ws_id] or { list = {}, of = {} }
+  return groups[ws_id]
 end
 
--- workspace id -> stable_ids, most recently used first. A stack is drawn with
--- its front smallest and its siblings peeking out behind it, and Hyprland
--- draws the window that was focused last on top: so the front of the pile has
+local function group_of_window(ws_id, id)
+  return groups_for(ws_id).of[id]
+end
+
+local function group_create(ws_id, id)
+  local g = groups_for(ws_id)
+  local rec = g.of[id]
+  if rec then
+    return rec
+  end
+  group_seq = group_seq + 1
+  rec = { seq = group_seq, ids = { id }, tiled = false }
+  g.list[#g.list + 1] = rec
+  g.of[id] = rec
+  return rec
+end
+
+local function group_join(ws_id, id, rec)
+  local g = groups_for(ws_id)
+  if not rec or g.of[id] then
+    return g.of[id]
+  end
+  rec.ids[#rec.ids + 1] = id
+  g.of[id] = rec
+  return rec
+end
+
+-- Leaves a group of one as a window again, since that is what it looks like.
+local function group_leave(ws_id, id)
+  local g = groups_for(ws_id)
+  local rec = g.of[id]
+  if not rec then
+    return
+  end
+  g.of[id] = nil
+  local i = index_of(rec.ids, id)
+  if i then
+    table.remove(rec.ids, i)
+  end
+  if #rec.ids <= 1 then
+    for _, other in ipairs(rec.ids) do
+      g.of[other] = nil
+    end
+    local j = index_of(g.list, rec)
+    if j then
+      table.remove(g.list, j)
+    end
+  end
+end
+
+-- Drop members that left the workspace and groups that are down to one.
+local function prune_groups(ws_id, list)
+  local g = groups_for(ws_id)
+  local present = {}
+  for _, id in ipairs(list) do
+    present[id] = true
+  end
+  local kept = {}
+  for _, rec in ipairs(g.list) do
+    local ids = {}
+    for _, id in ipairs(rec.ids) do
+      if present[id] then
+        ids[#ids + 1] = id
+      else
+        g.of[id] = nil
+      end
+    end
+    rec.ids = ids
+    if #ids > 1 then
+      kept[#kept + 1] = rec
+    else
+      for _, id in ipairs(ids) do
+        g.of[id] = nil
+      end
+    end
+  end
+  g.list = kept
+end
+
+-- workspace id -> stable_ids, most recently used first. A pile is drawn with
+-- its front smallest and its other windows peeking out behind it, and
+-- Hyprland draws the window focused last on top: so the front of the pile has
 -- to be the window used last, or the pile hides itself.
 local recent = {}
 
@@ -375,34 +454,66 @@ local function fill_side(targets, area, inner, side_w, dir, aspect)
   end
 end
 
--- One strip entry per app, in the order the windows appear in the slot list.
--- Each entry's members are ordered with the window used last first.
-local function stacks(list, ws_id)
-  local order, by_app = {}, {}
-  for _, t in ipairs(list) do
-    local key = app_key(t.window)
-    local entry = by_app[key]
-    if not entry then
-      entry = { key = key, targets = {} }
-      by_app[key] = entry
-      order[#order + 1] = entry
+-- The column's entries, in slot order: one per group, one per ungrouped
+-- window. A group's windows are ordered with the one used last first. The
+-- middle's own group is not in the column; it is in the primary zone.
+local function entries_of(side, ws_id, middle_id)
+  local g = groups_for(ws_id)
+  local middle_rec = middle_id and g.of[middle_id] or nil
+  local by_id = {}
+  for _, t in ipairs(side) do
+    if t.window and t.window.stable_id then
+      by_id[t.window.stable_id] = t
     end
-    entry.targets[#entry.targets + 1] = t
   end
-  for _, entry in ipairs(order) do
-    local seat = {}
-    for i, t in ipairs(entry.targets) do
-      seat[t] = i
-    end
-    table.sort(entry.targets, function(a, b)
-      local ra, rb = rank(ws_id, a.window.stable_id), rank(ws_id, b.window.stable_id)
-      if ra ~= rb then
-        return ra < rb
+  local out, seen = {}, {}
+  for _, t in ipairs(side) do
+    local id = t.window and t.window.stable_id
+    local rec = id and g.of[id] or nil
+    local in_middle = id == middle_id or (middle_rec and rec == middle_rec)
+    if not in_middle then
+      if not rec then
+        out[#out + 1] = { targets = { t } }
+      elseif not seen[rec] then
+        seen[rec] = true
+        local members = {}
+        for _, member in ipairs(rec.ids) do
+          local mt = by_id[member]
+          if mt then
+            members[#members + 1] = mt
+          end
+        end
+        if #members > 0 then
+          local seat = {}
+          for i, mt in ipairs(members) do
+            seat[mt] = i
+          end
+          table.sort(members, function(a, b)
+            local ra, rb = rank(ws_id, a.window.stable_id), rank(ws_id, b.window.stable_id)
+            if ra ~= rb then
+              return ra < rb
+            end
+            return seat[a] < seat[b]
+          end)
+          out[#out + 1] = { targets = members, group = rec }
+        end
       end
-      return seat[a] < seat[b]
-    end)
+    end
   end
-  return order
+  return out
+end
+
+-- A tiled group splits the primary zone between its windows instead of stacking
+-- them in one box.
+local function place_grid(targets, x, y, w, h)
+  local n = #targets
+  local cols = n <= 4 and n or math.ceil(math.sqrt(n))
+  local rows = math.ceil(n / cols)
+  for i, t in ipairs(targets) do
+    local c = (i - 1) % cols
+    local r = math.floor((i - 1) / cols)
+    t:place({ x = x + c * w / cols, y = y + r * h / rows, w = w / cols, h = h / rows })
+  end
 end
 
 -- The front of a stack is the smallest box, so the ones behind it show as a
@@ -540,20 +651,17 @@ hl.layout.register("stage", {
     -- is in the primary zone, so it is pulled out of the strip entirely.
     local one_side = cfg.thumb_side == "left" or cfg.thumb_side == "right"
     local parked, left, right = {}, {}, {}
-    if one_side and cfg.stack_by_app then
-      local middle_key = middle and app_key(middle.window) or ""
-      local visible = {}
-      for _, t in ipairs(side) do
-        if middle_key ~= "" and app_key(t.window) == middle_key then
-          parked[#parked + 1] = t
-        else
-          visible[#visible + 1] = t
-        end
+    local middle_id = middle and middle.window and middle.window.stable_id or nil
+    local middle_rec = ws_id and middle_id and group_of_window(ws_id, middle_id) or nil
+    if one_side then
+      if ws_id then
+        prune_groups(ws_id, slots_for(ws_id))
+        middle_rec = middle_id and group_of_window(ws_id, middle_id) or nil
       end
-      local entries = stacks(visible, ws_id)
-      -- There is only so much column: keep the apps used most recently and
-      -- park the rest behind the middle window, the way Stage Manager drops
-      -- the oldest apps off the side of the screen.
+      local entries = entries_of(side, ws_id, middle_id)
+      -- There is only so much column: keep the groups and windows used most
+      -- recently and park the rest behind the middle window, the way Stage
+      -- Manager drops the oldest apps off the side of the screen.
       if cfg.stack_max > 0 and #entries > cfg.stack_max then
         local age = {}
         for i, entry in ipairs(entries) do
@@ -620,14 +728,36 @@ hl.layout.register("stage", {
     end
 
     local mid_w = area.w - left_w - right_w
+    local box = { x = area.x + left_w, y = area.y, w = mid_w, h = area.h }
+    local members = {}
     if middle then
-      show_full(middle)
-      middle:place({ x = area.x + left_w, y = area.y, w = mid_w, h = area.h })
+      if middle_rec then
+        for _, id in ipairs(middle_rec.ids) do
+          local t = by_id[id]
+          if t then
+            members[#members + 1] = t
+          end
+        end
+      end
+      if #members <= 1 then
+        members = { middle }
+      end
+      for _, t in ipairs(members) do
+        show_full(t)
+      end
+      if middle_rec and middle_rec.tiled and #members > 1 then
+        place_grid(members, box.x, box.y, box.w, box.h)
+      else
+        -- Stacked: the middle window in front, the rest of its group in the
+        -- same box behind it. Alt+Tab still walks them, and focusing one
+        -- brings it to the front in place.
+        for _, t in ipairs(members) do
+          t:place(box)
+        end
+      end
     end
-    -- The middle app's other windows sit in the same box behind it: Alt+Tab
-    -- still walks them, and focusing one brings it to the front in place.
     for _, t in ipairs(parked) do
-      t:place({ x = area.x + left_w, y = area.y, w = mid_w, h = area.h })
+      t:place(box)
     end
 
     if cfg.thumb_side == "left" then
@@ -898,6 +1028,56 @@ function M.activate(address)
 end
 
 -- Swap the focused thumbnail into the middle.
+-- Put the focused window into the middle window's group, starting the group
+-- with the middle window if there isn't one yet. Grouping is explicit: two
+-- windows of the same app stay separate until this is pressed.
+function M.group()
+  local ws = stage_focused()
+  local w = hl.get_active_window()
+  if not ws or not w or not w.stable_id then
+    return
+  end
+  local list = slots_for(ws.id)
+  local middle_id = list[1]
+  if not middle_id then
+    return
+  end
+  local rec = group_of_window(ws.id, middle_id) or group_create(ws.id, middle_id)
+  group_join(ws.id, w.stable_id, rec)
+  relayout_soon()
+end
+
+-- Take the focused window out of its group. A group of one is a window again.
+function M.ungroup()
+  local ws = stage_focused()
+  local w = hl.get_active_window()
+  if not ws or not w or not w.stable_id then
+    return
+  end
+  group_leave(ws.id, w.stable_id)
+  relayout_soon()
+end
+
+-- Tile the group in the middle across the primary zone, or stack it again.
+function M.group_tile()
+  local ws = stage_focused()
+  if not ws then
+    return
+  end
+  local rec = group_of_window(ws.id, slots_for(ws.id)[1] or -1)
+  if not rec then
+    return
+  end
+  rec.tiled = not rec.tiled
+  relayout_soon()
+end
+
+-- The slot order for a workspace, [1] being the middle window. Used by the
+-- tests; also handy when poking at a live session.
+function M.slots(ws_id)
+  return slots_for(ws_id)
+end
+
 function M.promote()
   local w = hl.get_active_window()
   local ws = stage_focused()
@@ -1140,6 +1320,9 @@ end
 hl.unbind("SUPER + L")
 o.bind("SUPER + L", "Cycle workspace layout (dwindle, scrolling, stage)", guarded(M.cycle))
 o.bind("SUPER + Z", "Stage: swap focused thumbnail into the middle", guarded(M.promote))
+o.bind("SUPER + CTRL + G", "Stage: group the focused window with the middle one", guarded(M.group))
+o.bind("SUPER + CTRL + SHIFT + G", "Stage: take the focused window out of its group", guarded(M.ungroup))
+o.bind("SUPER + SHIFT + T", "Stage: tile or stack the group in the middle", guarded(M.group_tile))
 
 for _, k in ipairs({
   { "SUPER", -100, 100, "" },
