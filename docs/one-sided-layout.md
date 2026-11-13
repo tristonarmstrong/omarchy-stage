@@ -259,10 +259,14 @@ Kept here so the gaps are a decision rather than an oversight:
   way to group two windows that are both in the column without bringing one of
   them forward first.
 - Miniature thumbnails (the `stagethumbs` plugin) need Hyprland's function
-  hooks, which only exist on x86_64. On other architectures the plugin cannot
-  load, `stage-service.sh` notices once per boot, and thumbnails stay plain
-  windows. Clicking a plain thumbnail still promotes it through the normal
-  focus path.
+  hooks, which only exist on x86_64. On other architectures the plugin loads
+  without the preview hooks: thumbnails stay plain windows, but a primary
+  click on one is consumed and promotes it, so the app sees neither the press
+  nor the release. `stage-service.sh` says once per boot that previews are off.
+  Right and middle clicks pass through, and so do mouse bindings on those
+  buttons, because only the primary button is cancelled without the delivery
+  hook.
+  Upstream PR #7 has the x86 path.
 
 ## Testing notes
 

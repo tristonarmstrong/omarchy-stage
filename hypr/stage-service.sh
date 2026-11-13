@@ -20,17 +20,18 @@ notify() {
   echo "stage: $1"
 }
 
-# Hyprland's function hooks are x86_64 only: CFunctionHook::hook() returns false
-# on every other architecture, so the thumbnails plugin can never load there.
-# Build and load it only where it can work, and say so once per boot.
-hooks_work=1
-[[ $(uname -m) == x86_64 ]] || hooks_work=0
+# Hyprland's function hooks are x86_64 only, so miniatures can't be drawn
+# elsewhere. The plugin still loads there and consumes thumbnail clicks, so
+# build and load it on every architecture; say once per boot that previews
+# are off.
+previews_work=1
+[[ $(uname -m) == x86_64 ]] || previews_work=0
 
-no_hooks() {
-  local flag="${TMPDIR:-/tmp}/stage-no-hooks-$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo boot)"
+no_previews() {
+  local flag="${TMPDIR:-/tmp}/stage-no-previews-$(cat /proc/sys/kernel/random/boot_id 2>/dev/null || echo boot)"
   [[ -f $flag ]] && return 0
   : >"$flag" 2>/dev/null || true
-  notify "Miniature thumbnails need x86_64: Hyprland's function hooks do not work on $(uname -m). Stage runs with plain thumbnails."
+  notify "Miniature previews need x86_64: Hyprland's function hooks do not work on $(uname -m). Thumbnails are plain windows, but clicking one still brings it forward."
 }
 
 lua_quote() { # single-quoted Lua string
@@ -44,7 +45,7 @@ load_stage() {
 
 # Hyprland plugins must be built against the exact Hyprland that's installed.
 # Rebuild when the package version or the plugin source changes (a plugin
-# update); on failure, run without miniatures.
+# update); on failure, run without miniatures or click handling.
 build_thumbs() {
   local version want have
   version=$(pacman -Q hyprland 2>/dev/null | awk '{ print $2 }')
@@ -64,7 +65,7 @@ build_thumbs() {
   else
     rm -f "$SO"
     echo "$want" >"$STAMP"
-    notify "Couldn't build the miniature-thumbnails plugin for Hyprland $version; thumbnails are plain. See $PLUGIN/build.log"
+    notify "Couldn't build the thumbnail plugin for Hyprland $version; thumbnails are plain and clicks reach the app. See $PLUGIN/build.log"
   fi
 }
 
@@ -95,14 +96,11 @@ load_thumbs() {
 case "${1:-start}" in
   start)
     load_stage # usable right away; the build can take a while
-    if (( hooks_work )); then
-      build_thumbs
-      # Loading a plugin re-runs the config (fresh Lua state), so load stage
-      # again afterwards. Already loaded, it's a no-op.
-      load_thumbs && load_stage
-    else
-      no_hooks
-    fi
+    (( previews_work )) || no_previews
+    build_thumbs
+    # Loading a plugin re-runs the config (fresh Lua state), so load stage
+    # again afterwards. Already loaded, it's a no-op.
+    load_thumbs && load_stage
     ;;
   load)
     load_stage

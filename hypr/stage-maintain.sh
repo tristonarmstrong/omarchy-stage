@@ -57,12 +57,12 @@ fi
 if make -B -C "$PLUGIN" >"$PLUGIN/build.log" 2>&1; then
   rm -f "$SO.disabled"
   echo "$want" >"$STAMP"
-  notify "Rebuilt the miniature-thumbnails plugin for Hyprland $want."
+  notify "Rebuilt the thumbnail plugin for Hyprland $want."
   if [[ $MODE == boot ]] && command -v hyprctl >/dev/null; then
     hyprctl reload >/dev/null 2>&1 || true
   fi
 else
   [[ -f $SO ]] && mv -f "$SO" "$SO.disabled"
   echo "$want" >"$STAMP"
-  notify "Couldn't rebuild the miniature-thumbnails plugin for Hyprland $want; thumbnails are plain until it's fixed. See $PLUGIN/build.log"
+  notify "Couldn't rebuild the thumbnail plugin for Hyprland $want; thumbnails are plain and clicks reach the app until it's fixed. See $PLUGIN/build.log"
 fi

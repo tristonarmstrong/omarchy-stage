@@ -23,6 +23,11 @@ window. The test also covers already-focused thumbnails, right clicks,
 subsequent centered clicks, compositor mouse bindings, reloads, and leaving
 Stage. The old renderer fails with `Activation click leaked to app`.
 
+The plugin also loads on architectures without Hyprland's function hooks, in a
+clicks-only mode: the test detects that from the plugin description, skips the
+right-click assertion (only the primary button is swallowed there), and checks
+that click consumption, compositor bindings and non-Stage clicks still work.
+
 Live validation used Hyprland 0.57.1 together with the renderer compatibility
 changes in PR #5; Hyprland 0.56 was not run. Use `--plugin /path/to/stagethumbs.so`
 to select a compatible build. Initial fixture placement uses explicit activation

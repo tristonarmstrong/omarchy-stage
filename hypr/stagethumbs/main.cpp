@@ -14,6 +14,12 @@
 //     can open the highlighted window (a release bind would be cancelled by
 //     the TAB presses in between).
 //
+// Hyprland's function hooks are x86_64 only. On other architectures the
+// plugin still loads: previews, hover and pointer scaling are off, but a left
+// click is cancelled at the input event instead of at delivery, so it brings
+// the thumbnail forward without reaching the app. Other buttons pass
+// through, and ALT release reporting works there too.
+//
 // It only acts on tiled, non-fullscreen windows on a workspace whose layout
 // is lua:stage, so a window moved elsewhere goes back to normal by itself.
 
@@ -50,6 +56,11 @@ using Desktop::View::CWindow;
 
 static HANDLE                                  PHANDLE = nullptr;
 static const std::string                       LAYOUT  = "lua:stage";
+
+// True when the render/pointer hooks are installed, i.e. thumbnails are real
+// miniatures. Hyprland's function hooks are x86_64 only; elsewhere the plugin
+// still loads and consumes thumbnail clicks, just without previews.
+static bool                                    g_previews = false;
 
 // window address -> size the app is told it has
 static std::unordered_map<uintptr_t, Vector2D> g_full;
@@ -128,7 +139,7 @@ static std::optional<Vector2D> shrink(const CWindow* w) {
 // --- size reported to the app ----------------------------------------------
 
 typedef Vector2D (*realToReportSizeFn)(CWindow*);
-static Vector2D hkRealToReportSize(CWindow* self) {
+[[maybe_unused]] static Vector2D hkRealToReportSize(CWindow* self) {
     if (const auto full = fullSize(self))
         return *full;
     return ((realToReportSizeFn)g_hkReportSize->m_original)(self);
@@ -140,7 +151,7 @@ static Vector2D hkRealToReportSize(CWindow* self) {
 // it. For thumbnails, show the whole buffer (respecting any viewport crop the
 // app asked for) so it gets squeezed into the box.
 typedef void (*calcUVFn)(Render::IElementRenderer*, PHLWINDOW, SP<CWLSurfaceResource>, PHLMONITOR, bool, const Vector2D&, const Vector2D&, bool);
-static void hkCalculateUVForSurface(Render::IElementRenderer* self, PHLWINDOW window, SP<CWLSurfaceResource> surface, PHLMONITOR monitor, bool main, const Vector2D& projSize,
+[[maybe_unused]] static void hkCalculateUVForSurface(Render::IElementRenderer* self, PHLWINDOW window, SP<CWLSurfaceResource> surface, PHLMONITOR monitor, bool main, const Vector2D& projSize,
                                     const Vector2D& projSizeUnscaled, bool fixMisaligned) {
     ((calcUVFn)g_hkUV->m_original)(self, window, surface, monitor, main, projSize, projSizeUnscaled, fixMisaligned);
 
@@ -170,7 +181,7 @@ static void hkCalculateUVForSurface(Render::IElementRenderer* self, PHLWINDOW wi
 // The main surface is already stretched to the window box; subsurfaces
 // (video, embedded views) are drawn at their own size, so scale them too.
 typedef CBox (*getTexBoxFn)(CSurfacePassElement*);
-static CBox hkGetTexBox(CSurfacePassElement* self) {
+[[maybe_unused]] static CBox hkGetTexBox(CSurfacePassElement* self) {
     const CBox original = ((getTexBoxFn)g_hkTexBox->m_original)(self);
 
     const auto& d = self->m_data;
@@ -222,31 +233,63 @@ static void reportHover(uintptr_t hovered) {
 }
 
 typedef void (*setPointerFocusFn)(CSeatManager*, SP<CWLSurfaceResource>, const Vector2D&);
-static void hkSetPointerFocus(CSeatManager* self, SP<CWLSurfaceResource> surface, const Vector2D& local) {
+[[maybe_unused]] static void hkSetPointerFocus(CSeatManager* self, SP<CWLSurfaceResource> surface, const Vector2D& local) {
     ((setPointerFocusFn)g_hkFocus->m_original)(self, surface, toFull(surface, local));
     const auto window = windowOf(surface);
     reportHover(window && fullSize(window.get()) ? reinterpret_cast<uintptr_t>(window.get()) : 0);
 }
 
 typedef void (*sendPointerMotionFn)(CSeatManager*, uint32_t, const Vector2D&);
-static void hkSendPointerMotion(CSeatManager* self, uint32_t timeMs, const Vector2D& local) {
+[[maybe_unused]] static void hkSendPointerMotion(CSeatManager* self, uint32_t timeMs, const Vector2D& local) {
     ((sendPointerMotionFn)g_hkMotion->m_original)(self, timeMs, toFull(self->m_state.pointerFocus.lock(), local));
 }
 
+static void reportClick(uintptr_t addr) {
+    g_clickReport = g_pEventLoopManager->doLaterLock([addr] {
+        HyprlandAPI::invokeHyprctlCommand("eval", std::format(
+            "local s = _G.omarchy_stage; if s and s.activate then s.activate('0x{:x}') end", addr));
+    });
+}
+
 // Capture thumbnail status before Hyprland changes focus or Lua recalculates
-// the layout. Leave the input event alone so compositor mouse bindings still
-// work. Only swallow it if Hyprland actually tries to deliver it to an app.
-static void onButton(const IPointer::SButtonEvent& e) {
-    if (e.state != WL_POINTER_BUTTON_STATE_PRESSED)
+// the layout. With the hooks, leave the input event alone so compositor mouse
+// bindings still work, and swallow delivery in sendPointerButton instead.
+// Without hooks the event has to be cancelled here; only the primary button
+// does that, so right and middle clicks still reach the app.
+static void onButton(const IPointer::SButtonEvent& e, Event::SCallbackInfo& info) {
+    if (e.state == WL_POINTER_BUTTON_STATE_PRESSED) {
+        const auto window = windowOf(g_pSeatManager->m_state.pointerFocus.lock());
+        if (window && thumbnailSize(window.get())) {
+            if (g_previews) {
+                g_thumbnailButtons[e.button] = reinterpret_cast<uintptr_t>(window.get());
+            } else if (e.button == BTN_LEFT) {
+                g_thumbnailButtons[e.button] = reinterpret_cast<uintptr_t>(window.get());
+                info.cancelled               = true;
+                reportClick(reinterpret_cast<uintptr_t>(window.get()));
+            }
+            return;
+        }
+        // With the hooks a fresh press resets the button's state; without
+        // them a track already belongs to a press on a thumbnail and its
+        // release still has to be swallowed.
+        if (g_previews)
+            g_thumbnailButtons.erase(e.button);
         return;
-    g_thumbnailButtons.erase(e.button);
-    const auto window = windowOf(g_pSeatManager->m_state.pointerFocus.lock());
-    if (window && thumbnailSize(window.get()))
-        g_thumbnailButtons[e.button] = reinterpret_cast<uintptr_t>(window.get());
+    }
+
+    // With the hooks the release is consumed in sendPointerButton, so the
+    // entry has to stay until that runs.
+    if (g_previews)
+        return;
+    const auto it = g_thumbnailButtons.find(e.button);
+    if (it == g_thumbnailButtons.end())
+        return;
+    g_thumbnailButtons.erase(it);
+    info.cancelled = true;
 }
 
 typedef void (*sendPointerButtonFn)(CSeatManager*, uint32_t, uint32_t, wl_pointer_button_state);
-static void hkSendPointerButton(CSeatManager* self, uint32_t timeMs, uint32_t button, wl_pointer_button_state state) {
+[[maybe_unused]] static void hkSendPointerButton(CSeatManager* self, uint32_t timeMs, uint32_t button, wl_pointer_button_state state) {
     const auto it = g_thumbnailButtons.find(button);
     if (it == g_thumbnailButtons.end()) {
         ((sendPointerButtonFn)g_hkButton->m_original)(self, timeMs, button, state);
@@ -258,11 +301,7 @@ static void hkSendPointerButton(CSeatManager* self, uint32_t timeMs, uint32_t bu
         g_thumbnailButtons.erase(it);
         return;
     }
-    const auto addr = it->second;
-    g_clickReport = g_pEventLoopManager->doLaterLock([addr] {
-        HyprlandAPI::invokeHyprctlCommand("eval", std::format(
-            "local s = _G.omarchy_stage; if s and s.activate then s.activate('0x{:x}') end", addr));
-    });
+    reportClick(it->second);
 }
 
 // --- keyboard --------------------------------------------------------------
@@ -292,7 +331,7 @@ static void onKey(const IKeyboard::SKeyEvent& e) {
 // Damage arrives in the app's full-size coordinates; just redraw the whole
 // (small) thumbnail instead.
 typedef void (*damageSurfaceFn)(void*, SP<CWLSurfaceResource>, double, double, double);
-static void hkDamageSurface(void* self, SP<CWLSurfaceResource> surface, double x, double y, double scale) {
+[[maybe_unused]] static void hkDamageSurface(void* self, SP<CWLSurfaceResource> surface, double x, double y, double scale) {
     const auto window = windowOf(surface);
     if (window && fullSize(window.get())) {
         g_pHyprRenderer->damageWindow(window);
@@ -338,6 +377,13 @@ static int luaLoaded(lua_State* L) {
     return 1;
 }
 
+// previews(): whether the render hooks are installed. False means the layout
+// still gets click handling, but thumbnails are plain windows.
+static int luaPreviews(lua_State* L) {
+    lua_pushboolean(L, g_previews ? 1 : 0);
+    return 1;
+}
+
 // --- plugin lifecycle ------------------------------------------------------
 
 static void* find(const std::string& name, const std::string& demangled) {
@@ -348,7 +394,7 @@ static void* find(const std::string& name, const std::string& demangled) {
     throw std::runtime_error("stagethumbs: could not find " + demangled);
 }
 
-static CFunctionHook* hook(const std::string& name, const std::string& demangled, void* fn) {
+[[maybe_unused]] static CFunctionHook* hook(const std::string& name, const std::string& demangled, void* fn) {
     auto* h = HyprlandAPI::createFunctionHook(PHANDLE, find(name, demangled), fn);
     if (!h || !h->hook())
         throw std::runtime_error("stagethumbs: could not hook " + demangled);
@@ -365,6 +411,9 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     if (__hyprland_api_get_hash() != std::string{__hyprland_api_get_client_hash()})
         throw std::runtime_error("stagethumbs: built for a different Hyprland version, rebuild it (make -C ~/.config/hypr/stagethumbs)");
 
+#if defined(__x86_64__)
+    // Function hooks only exist on x86_64. Elsewhere the plugin still loads,
+    // without previews, so thumbnail clicks can be consumed.
     g_hkReportSize = hook("realToReportSize", "CWindow::realToReportSize", (void*)&hkRealToReportSize);
     g_hkUV         = hook("calculateUVForSurface", "IElementRenderer::calculateUVForSurface", (void*)&hkCalculateUVForSurface);
     g_hkTexBox     = hook("getTexBox", "CSurfacePassElement::getTexBox", (void*)&hkGetTexBox);
@@ -372,16 +421,22 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     g_hkMotion     = hook("sendPointerMotion", "CSeatManager::sendPointerMotion", (void*)&hkSendPointerMotion);
     g_hkButton     = hook("sendPointerButton", "CSeatManager::sendPointerButton", (void*)&hkSendPointerButton);
     g_hkDamage     = hook("damageSurface", "::damageSurface(", (void*)&hkDamageSurface);
+    g_previews     = true;
+#endif
 
     HyprlandAPI::addLuaFunction(PHANDLE, "stagethumbs", "set", luaSet);
     HyprlandAPI::addLuaFunction(PHANDLE, "stagethumbs", "clear", luaClear);
     HyprlandAPI::addLuaFunction(PHANDLE, "stagethumbs", "loaded", luaLoaded);
+    HyprlandAPI::addLuaFunction(PHANDLE, "stagethumbs", "previews", luaPreviews);
     HyprlandAPI::addLuaFunction(PHANDLE, "stagethumbs", "watch_alt", luaWatchAlt);
 
     g_keyListener = Event::bus()->m_events.input.keyboard.key.listen([](IKeyboard::SKeyEvent e, Event::SCallbackInfo&) { onKey(e); });
-    g_buttonListener = Event::bus()->m_events.input.mouse.button.listen([](IPointer::SButtonEvent e, Event::SCallbackInfo&) { onButton(e); });
+    g_buttonListener = Event::bus()->m_events.input.mouse.button.listen(
+        [](IPointer::SButtonEvent e, Event::SCallbackInfo& info) { onButton(e, info); });
 
-    return {"stagethumbs", "True miniatures for the Lua stage layout", "sulejman", "0.4"};
+    return {"stagethumbs",
+            g_previews ? "True miniatures for the Lua stage layout" : "Thumbnail clicks for the Lua stage layout (no previews on this architecture)",
+            "sulejman", "0.5"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {

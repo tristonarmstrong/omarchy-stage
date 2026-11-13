@@ -55,7 +55,8 @@ The two-sided layout itself is upstream's, unchanged: with
   close, full screen and toggle floating are rows under **Windows** in omacast
   and Omarchy's own menu — no keys to remember.
 - **Thumbnail clicks.** Clicking a thumbnail brings that window forward without
-  delivering the press or release to the app (upstream PR #7).
+  delivering the press to the app — with or without the preview plugin
+  (upstream PR #7).
 - **Tests.** A stubbed-`hl` harness for the layout and group maths, plus the
   live thumbnail-click regression test.
 
@@ -169,10 +170,15 @@ middle-of-screen size and draws that content scaled down. Clicking a thumbnail
 only brings it into the middle; neither the button press nor its release is
 sent to the app. Click again in the centered window to interact with it.
 
-The miniatures need Hyprland's function hooks, which are x86_64 only: on other
-architectures the plugin cannot load, the layout notices once per boot, and
-thumbnails stay plain windows. The rest of the fork — one-sided strip, groups,
-stack ring, launcher rows — is plain Lua and works there.
+The miniatures need Hyprland's function hooks, which are x86_64 only. On other
+architectures the plugin loads without them: thumbnails stay plain windows, but
+a primary click on one is still consumed and brings the window forward, so the
+app sees neither the press nor the release. The layout says once per boot that
+previews are off. Right and middle clicks pass through, and so do mouse
+bindings on those buttons, because only the primary button is cancelled
+there. The rest
+of the fork — one-sided strip, groups, stack ring, launcher rows — is plain Lua
+and works everywhere.
 
 Hyprland plugins must be built against the exact Hyprland version that's
 running, so both install methods rebuild it when the `hyprland` package

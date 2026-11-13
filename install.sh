@@ -57,13 +57,13 @@ fi
 
 # --- miniature thumbnails plugin (optional) ----------------------------------
 
-say "Building the miniature-thumbnails plugin"
+say "Building the thumbnail plugin (miniatures where supported, thumbnail clicks everywhere)"
 if ! command -v make >/dev/null || ! command -v g++ >/dev/null; then
   echo "  skipped: needs make and g++ (the base-devel package group)."
-  echo "  Stage works without it; thumbnails are then plain small windows."
+  echo "  Stage works without it; thumbnails are plain and clicks reach the app."
 elif ! pkg-config --exists hyprland 2>/dev/null; then
   echo "  skipped: Hyprland headers not found by pkg-config."
-  echo "  Stage works without it; thumbnails are then plain small windows."
+  echo "  Stage works without it; thumbnails are plain and clicks reach the app."
 else
   # Force a rebuild: main.cpp may have changed even if Hyprland didn't.
   rm -f "$HYPR/stagethumbs/.built-for"
