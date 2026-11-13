@@ -146,6 +146,42 @@ parked behind the middle either: `ALT + TAB` and the layout stop seeing it
 until it comes back. Closing the last window of a group removes the entry, and
 a group that is down to one window is a window again.
 
+## Choices, and why
+
+Each of these was a fork in the road; the reason is here so the same ground is
+not covered twice.
+
+- **Nothing groups by itself.** Grouping by app looked tidy until two Chromium
+  windows — work and personal — turned into one entry. A group is now something
+  you make, and a second window of the same app is simply a second window.
+- **A group is a set of windows, not an app.** Windows from different apps can
+  share a group, which is what a "reading set" of a PDF and a browser tab
+  actually is.
+- **The window in the middle is the anchor.** With no canvas to drop onto, the
+  primary zone is the thing you group towards: bring one window forward, then
+  add the other. The key falls back to the window just swapped out, because
+  clicking a window promotes it and leaves nothing else selected.
+- **The group in the middle leaves the column.** That is Stage Manager's shape,
+  and it keeps the primary zone for what you are using. Its other windows sit
+  behind it (stacked) or beside it (tiled).
+- **Two ways to show a group.** Stacked gives each window the full primary zone
+  one at a time, which is what reading and writing need; tiled splits the zone
+  so a group of terminals can be watched at once. It is a per-group setting,
+  not a global mode.
+- **A pile, not a badge.** The front of a pile is the window used last, smaller
+  than the ones behind it, so the depth shows as a few pixels of edge. There is
+  no counter to draw.
+- **Overflow parks instead of shrinking forever.** Past `stack_max` entries the
+  least recently used go behind the middle window rather than becoming
+  unreadable slivers, which is also what Stage Manager does.
+- **The resize keys stop where the window stops.** The stored share saturates
+  at the floor, so a press past the end is not banked and the first press back
+  moves the window immediately.
+- **Clicks and keys only.** The layout is auto-tiling; nothing depends on
+  dragging a window.
+- **Two Omarchy shortcuts gave way.** Google Messages and Activity were on the
+  combos the group keys needed; both are unbound on load.
+
 ## What Stage Manager does that this does not
 
 Kept here so the gaps are a decision rather than an oversight:
