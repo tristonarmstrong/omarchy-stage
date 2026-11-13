@@ -265,8 +265,7 @@ Kept here so the gaps are a decision rather than an oversight:
   nor the release. `stage-service.sh` says once per boot that previews are off.
   Right and middle clicks pass through, and so do mouse bindings on those
   buttons, because only the primary button is cancelled without the delivery
-  hook.
-  Upstream PR #7 has the x86 path.
+  hook. Upstream PR #7 has the x86 path.
 
 ## Testing notes
 

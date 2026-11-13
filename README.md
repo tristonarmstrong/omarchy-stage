@@ -176,9 +176,8 @@ a primary click on one is still consumed and brings the window forward, so the
 app sees neither the press nor the release. The layout says once per boot that
 previews are off. Right and middle clicks pass through, and so do mouse
 bindings on those buttons, because only the primary button is cancelled
-there. The rest
-of the fork — one-sided strip, groups, stack ring, launcher rows — is plain Lua
-and works everywhere.
+there. The rest of the fork — one-sided strip, groups, stack ring, launcher
+rows — is plain Lua and works everywhere.
 
 Hyprland plugins must be built against the exact Hyprland version that's
 running, so both install methods rebuild it when the `hyprland` package
