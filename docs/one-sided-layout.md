@@ -135,6 +135,30 @@ side changes behaviour:
 `switch_order` handles that: with `thumb_side` set, slot order is already the
 order on screen, so it walks slots 2..n.
 
+## From the launcher
+
+The same actions are in omacast and in Omarchy's own menu, under **Windows**,
+so they can be searched for instead of remembered. They are rows in
+`~/.config/omarchy/extensions/omarchy-menu.jsonc` — a paste-in copy is in
+`contrib/omarchy-menu-windows.jsonc` — which both menus read, so no plugin code
+is involved and an omacast update keeps them.
+
+| row | runs |
+| --- | --- |
+| Group Window with the Middle | `hyprctl dispatch 'omarchy_stage.group()'` |
+| Take Window Out of Its Group | `hyprctl dispatch 'omarchy_stage.ungroup()'` |
+| Tile or Stack the Group | `hyprctl dispatch 'omarchy_stage.group_tile()'` |
+| Swap Window into the Middle | `hyprctl dispatch 'omarchy_stage.promote()'` |
+| Close Window | `hyprctl dispatch 'hl.dsp.window.close()'` |
+| Full Screen | `hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = "fullscreen" })'` |
+| Toggle Floating | `hyprctl dispatch 'hl.dsp.window.float({ action = "toggle" })'` |
+
+They act on the window Hyprland has focused, which is still the window you were
+using when the launcher opened — a layer surface doesn't take the active window
+from the app. Omarchy 4's `hyprctl dispatch` evaluates Lua, so the plain
+dispatchers go through `hl.dsp` too: `hyprctl dispatch fullscreen 0` is a syntax
+error there, and a launcher runs it detached, so it fails without a word.
+
 ## Where it lives in the code
 
 - `fill_column` places the single column. It is only called when `thumb_side`

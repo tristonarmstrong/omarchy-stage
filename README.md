@@ -43,6 +43,12 @@ keep Omarchy's normal bindings.
 | `SUPER + Z` | Swap the focused thumbnail into the middle |
 | `SUPER + -` / `SUPER + =` | Widen / narrow the middle window (`ALT`: a little, `CTRL`: a lot). Thumbnails resize to use the space that's left |
 
+The same actions sit in omacast and in Omarchy's **Windows** menu — group,
+ungroup, tile or stack, swap into the middle, close, full screen and toggle
+floating — so they can be searched for instead of remembered;
+`contrib/omarchy-menu-windows.jsonc` is the paste-in for
+`~/.config/omarchy/extensions/omarchy-menu.jsonc`.
+
 Which workspaces are in stage mode and how wide their middle window is are
 remembered across reloads and logins.
 

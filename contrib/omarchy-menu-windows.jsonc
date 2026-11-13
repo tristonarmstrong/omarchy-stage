@@ -1,0 +1,25 @@
+// Window actions for the Omarchy menu and omacast.
+//
+// Paste these into the top-level object of
+// ~/.config/omarchy/extensions/omarchy-menu.jsonc and save: omacast and the
+// Omarchy menu both watch that file and pick the rows up. Nothing else is
+// needed — the Stage rows call the omarchy-stage plugin through hyprctl, and
+// the rest are plain Hyprland dispatchers.
+//
+// They act on the window Hyprland has focused, which is the window you were
+// using when the launcher opened, not the launcher itself.
+//
+// Omarchy 4's `hyprctl dispatch` takes Lua, so a bare `hyprctl dispatch
+// fullscreen 0` is a syntax error and fails silently from a launcher; the
+// window actions go through hl.dsp for that reason.
+
+  // Window actions, also picked up by omacast. Stage entries drive the
+  // omarchy-stage plugin; the rest are plain Hyprland dispatchers.
+  "windows": {"icon": "󰖲", "label": "Windows", "description": "Window actions for the window you were using"},
+  "windows.stage-group": {"icon": "󰹰", "label": "Group Window with the Middle", "description": "Put the focused window in the same slot as the one in the middle (Super + Ctrl + G)", "action": "hyprctl dispatch 'omarchy_stage.group()'"},
+  "windows.stage-ungroup": {"icon": "󰖯", "label": "Take Window Out of Its Group", "description": "The window leaves its group; a group of one is a window again (Super + Shift + Ctrl + G)", "action": "hyprctl dispatch 'omarchy_stage.ungroup()'"},
+  "windows.stage-tile": {"icon": "󰕳", "label": "Tile or Stack the Group", "description": "Split the primary zone between the group's windows, or stack them again (Super + Shift + T)", "action": "hyprctl dispatch 'omarchy_stage.group_tile()'"},
+  "windows.stage-swap": {"icon": "󰒞", "label": "Swap Window into the Middle", "description": "Bring the focused window into the primary zone (Super + Z)", "action": "hyprctl dispatch 'omarchy_stage.promote()'"},
+  "windows.close": {"icon": "󰅖", "label": "Close Window", "description": "Close the focused window (Super + W)", "action": "hyprctl dispatch 'hl.dsp.window.close()'"},
+  "windows.fullscreen": {"icon": "󰊓", "label": "Full Screen", "description": "Toggle full screen for the focused window (Super + F)", "action": "hyprctl dispatch 'hl.dsp.window.fullscreen({ mode = \"fullscreen\" })'"},
+  "windows.float": {"icon": "󰖱", "label": "Toggle Floating", "description": "Float the focused window, or tile it again (Super + T)", "action": "hyprctl dispatch 'hl.dsp.window.float({ action = \"toggle\" })'"},
