@@ -11,8 +11,10 @@ each one further out a bit smaller.
 Prefer the thumbnails out of the way? `cfg.thumb_side = "left"` (or `"right"`)
 keeps them all on that edge in a single column, and the middle window takes the
 whole rest of the screen, so narrowing it stops where the thumbnails stop
-getting bigger. [How the one-sided layout works](docs/one-sided-layout.md)
-has the details.
+getting bigger. On one side the windows of an app also share a slot — the one
+used last is the front of the pile, the rest sit behind it — and the app in the
+middle is pulled out of the column entirely, like Stage Manager.
+[How the one-sided layout works](docs/one-sided-layout.md) has the details.
 
 Thumbnails keep their spot. Bringing a window into the middle swaps it with
 the current middle window, and nothing else moves.
@@ -31,7 +33,7 @@ keep Omarchy's normal bindings.
 | Key | Action |
 |---|---|
 | `SUPER + L` | Cycle the workspace layout: dwindle → scrolling → stage → dwindle |
-| Click a thumbnail | Swap it into the middle (with stagethumbs, the click is consumed) |
+| Click a thumbnail | Swap it into the middle (with stacks, its app's last-used window; with stagethumbs, the click is consumed) |
 | `ALT + TAB` / `ALT + SHIFT + TAB` | Switcher: hold `ALT` and tap `TAB` to move the highlight across the thumbnails (the left side first, inner column top to bottom, then the right side; `SHIFT` goes back), release `ALT` to open the highlighted one |
 | `SUPER + arrows` | Move focus without moving anything (you can type into a thumbnail) |
 | `SUPER + Z` | Swap the focused thumbnail into the middle |
@@ -104,9 +106,10 @@ folder, or `~/.config/hypr/stagethumbs/` for a manual install).
 ## Tuning
 
 The `cfg` table at the top of `hypr/stage.lua` holds the knobs: which side(s)
-the thumbnails are on, middle window aspect and min/max share of the screen,
-thumbnail opacity, the selection border width and how long the swap highlight
-lasts. With the plugin, edit
+the thumbnails are on, whether apps stack (`stack_by_app`, with `stack_offset`
+and `stack_spread` for the pile), middle window aspect and min/max share of the
+screen, thumbnail opacity, the selection border width and how long the swap
+highlight lasts. With the plugin, edit
 `~/.config/omarchy/plugins/io.github.sulejman.stage/hypr/stage.lua` and run
 `hyprctl reload`. With a manual install, edit `~/.config/hypr/stage.lua`
 (Hyprland reloads on save). Updates replace the file, so keep a note of your

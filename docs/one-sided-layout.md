@@ -27,6 +27,9 @@ be within that strip:
 | thumbnail width | height × `aspect` |
 | vertical position | centred in the screen |
 
+`count` is the number of **apps** in the column, not the number of windows: the
+windows of one app share a slot (see below).
+
 `aspect` is the middle window's shape at its default width,
 `area.w * default_share(area) / area.h`, so a thumbnail is a scaled copy of the
 window rather than a different shape. With a handful of windows the column is
@@ -43,12 +46,35 @@ less width). `SUPER + =` still widens it, which shrinks the thumbnails.
 At the default share on a 1512x982 output (a 1492x962 tiling area), the middle
 window is 1223 px wide and the strip 269 px:
 
-| thumbnails | each thumbnail | middle window |
+| apps in the column | each slot | middle window |
 | --- | --- | --- |
-| 3 | 269 by 271 | 1223 |
+| 1 to 3 | 269 by 271 | 1223 |
 | 4 | 239 by 240 | 1253 |
 | 6 | 159 by 159 | 1333 |
 | 8 | 119 by 119 | 1373 |
+
+## Stacks: one slot per app
+
+With `cfg.stack_by_app` on (the default in this fork), an app's windows share
+one slot instead of taking one each:
+
+- The windows keep the slot's corner. The one used last is the **front** and
+  has the smallest box; each one behind it is a `cfg.stack_offset` (8 px) wider
+  and taller, up to `cfg.stack_spread` (3) layers, so the pile shows as a few
+  pixels of edge. A fourth window and beyond share the back of the pile.
+- Hyprland draws the window focused last on top, so the front of the pile has
+  to be the window used last. The layout tracks that per workspace where the
+  swaps happen; if it were wrong, a pile would hide itself behind its own back.
+- The app in the middle is **pulled out of the column**, the way Stage Manager
+  does: its other windows sit in the middle window's box behind it. They stay
+  on `ALT + TAB`, and focusing one brings it to the front in place, so cycling
+  an app's windows happens in the primary zone rather than in the strip.
+- With fewer entries the column needs less width, so the floor relaxes: three
+  apps of three windows each leave the middle window wider than nine windows
+  spread over nine apps.
+
+App identity is the window's `class`, the only app concept Hyprland has. Two
+Chromium app-mode windows therefore count as one app.
 
 ## Keys
 
@@ -63,6 +89,11 @@ side changes behaviour:
   `SUPER + =` from the widest middle window to the floor, and no more.
 - `ALT + TAB` walks the single column from top to bottom instead of visiting
   the left side and then the right, so the switcher follows what is on screen.
+  The app in the middle is in the walk too, which is how its parked windows
+  come forward.
+- Clicking a stack brings its front window into the middle, which also pulls
+  that app out of the column. Moving between the windows of the app now in the
+  middle is `ALT + TAB`.
 
 `switch_order` handles that: with `thumb_side` set, slot order is already the
 order on screen, so it walks slots 2..n.
@@ -81,6 +112,9 @@ order on screen, so it walks slots 2..n.
 - The strip is limited to one side's worth, so a very narrow middle window is
   not possible on one side: the column has a minimum width it needs. That is
   deliberate; the alternative is a gap between the column and the window.
+- The pile shows as a few pixels of edge, so it reads better with a wallpapered
+  background than against a busy window; there is no badge to say how deep it
+  is.
 - Miniature thumbnails (the `stagethumbs` plugin) need Hyprland's function
   hooks, which only exist on x86_64. On other architectures the plugin cannot
   load, `stage-service.sh` notices once per boot, and thumbnails stay plain

@@ -59,7 +59,7 @@ local cfg = {
 
   -- One slot per app instead of one per window: the windows of an app share a
   -- slot, fanned a few pixels apart, and the one used last is the front of the
-  -- pile. Off in the released layout, on in this fork.
+  -- pile. On in this fork; an upstream patch would ship it off.
   stack_by_app = true,
   stack_offset = 8, -- how far each window behind the front of its stack shows
   stack_spread = 3, -- ...for at most this many layers; deeper ones share the back
