@@ -242,6 +242,11 @@ local function save_center()
   file:close()
 end
 
+-- workspace id -> the smallest share the resize keys can reach. On one side
+-- the strip stops widening once the column is as wide as it can get, so past
+-- this the middle window doesn't move and presses would only stack up.
+local min_share = {}
+
 local function default_share(area)
   return math.min(cfg.center_max, math.max(cfg.center_min, cfg.center_aspect / (area.w / area.h)))
 end
@@ -457,10 +462,18 @@ hl.layout.register("stage", {
     -- rest to the middle window. That is what puts a floor under the middle
     -- window's width: narrowing it stops where the column can't get wider, so
     -- no band of wallpaper is left between them.
+    local need = 0
     if cfg.thumb_side == "left" and #left > 0 then
-      left_w = math.min(left_w, area.h / #left * aspect)
+      need = area.h / #left * aspect
+      left_w = math.min(left_w, need)
     elseif cfg.thumb_side == "right" and #right > 0 then
-      right_w = math.min(right_w, area.h / #right * aspect)
+      need = area.h / #right * aspect
+      right_w = math.min(right_w, need)
+    end
+    -- The share at which the strip is exactly what the column needs: the
+    -- resize keys stop here, where the middle window stops shrinking.
+    if ws_id then
+      min_share[ws_id] = need > 0 and (1 - 2 * need / area.w) or nil
     end
 
     local mid_w = area.w - left_w - right_w
@@ -944,9 +957,14 @@ function M.resize(dx)
     local width = mon and (mon.width / mon.scale) or 1920
     -- Omarchy's "expand" is a negative x; widen by that much on each side.
     local share = default_share({ w = width, h = mon and (mon.height / mon.scale) or 1080 })
-    local adjust = (center_adjust[ws.id] or 0) - 2 * dx / width
-    -- clamp so repeated presses past a limit don't pile up
-    adjust = math.min(cfg.center_step_max - share, math.max(cfg.center_step_min - share, adjust))
+    -- On one side the strip stops at the column, so the middle window stops
+    -- moving before the share's own limit does. Clamp both the stored value
+    -- and the new one to the nearest share that still moves something, so a
+    -- press past the end isn't stored as something that has to be undone.
+    local lo = math.max(cfg.center_step_min, min_share[ws.id] or cfg.center_step_min) - share
+    local adjust = (center_adjust[ws.id] or 0)
+    adjust = math.min(cfg.center_step_max - share, math.max(lo, adjust))
+    adjust = math.min(cfg.center_step_max - share, math.max(lo, adjust - 2 * dx / width))
     center_adjust[ws.id] = adjust
     save_center()
     hl.dispatch(hl.dsp.layout("refresh"))

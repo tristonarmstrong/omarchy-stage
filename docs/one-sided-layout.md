@@ -56,7 +56,11 @@ Everything keeps working as documented in the README. The two places where one
 side changes behaviour:
 
 - `SUPER + -` / `SUPER + =` narrow and widen the middle window as usual, and
-  stop when the column cannot get any wider.
+  stop when the column cannot get any wider. They stop *there*, not at the
+  share's own limit, so presses past the end are not stored: pressing the
+  other key once moves the window straight away instead of first burning off
+  the extra presses. On a three-thumbnail workspace there are three steps of
+  `SUPER + =` from the widest middle window to the floor, and no more.
 - `ALT + TAB` walks the single column from top to bottom instead of visiting
   the left side and then the right, so the switcher follows what is on screen.
 
