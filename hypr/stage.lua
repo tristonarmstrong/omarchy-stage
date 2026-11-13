@@ -57,6 +57,13 @@ local cfg = {
   -- still resize the middle window; see docs/one-sided-layout.md.
   thumb_side = "both",
 
+  -- One slot per app instead of one per window: the windows of an app share a
+  -- slot, fanned a few pixels apart, and the one used last is the front of the
+  -- pile. Off in the released layout, on in this fork.
+  stack_by_app = true,
+  stack_offset = 8, -- how far each window behind the front of its stack shows
+  stack_spread = 3, -- ...for at most this many layers; deeper ones share the back
+
   thumb_opacity = 0.72, -- thumbnails at rest; the selected or hovered one is fully opaque
   select_border = 4, -- border (px) on thumbnails; only the selected one's is visible
   swap_flash_ms = 700, -- both windows of a swap light up this long, so it's clear which two traded places
@@ -207,6 +214,42 @@ local function sync(list, windows, focused_id)
   end
 end
 
+-- The app a window belongs to. Hyprland has no app concept beyond the class
+-- the client sets, so two Chromium app-mode windows count as one app.
+local function app_key(w)
+  if not w then
+    return ""
+  end
+  if type(w.class) == "string" and w.class ~= "" then
+    return w.class
+  end
+  return type(w.title) == "string" and w.title or ""
+end
+
+-- workspace id -> stable_ids, most recently used first. A stack is drawn with
+-- its front smallest and its siblings peeking out behind it, and Hyprland
+-- draws the window that was focused last on top: so the front of the pile has
+-- to be the window used last, or the pile hides itself.
+local recent = {}
+
+local function touch(ws_id, id)
+  if not ws_id or not id then
+    return
+  end
+  local list = recent[ws_id] or {}
+  recent[ws_id] = list
+  local i = index_of(list, id)
+  if i then
+    table.remove(list, i)
+  end
+  table.insert(list, 1, id)
+end
+
+local function rank(ws_id, id)
+  local i = index_of(recent[ws_id] or {}, id)
+  return i or math.huge
+end
+
 local function slots_for(ws_id)
   slots[ws_id] = slots[ws_id] or {}
   return slots[ws_id]
@@ -331,13 +374,55 @@ local function fill_side(targets, area, inner, side_w, dir, aspect)
   end
 end
 
+-- One strip entry per app, in the order the windows appear in the slot list.
+-- Each entry's members are ordered with the window used last first.
+local function stacks(list, ws_id)
+  local order, by_app = {}, {}
+  for _, t in ipairs(list) do
+    local key = app_key(t.window)
+    local entry = by_app[key]
+    if not entry then
+      entry = { key = key, targets = {} }
+      by_app[key] = entry
+      order[#order + 1] = entry
+    end
+    entry.targets[#entry.targets + 1] = t
+  end
+  for _, entry in ipairs(order) do
+    local seat = {}
+    for i, t in ipairs(entry.targets) do
+      seat[t] = i
+    end
+    table.sort(entry.targets, function(a, b)
+      local ra, rb = rank(ws_id, a.window.stable_id), rank(ws_id, b.window.stable_id)
+      if ra ~= rb then
+        return ra < rb
+      end
+      return seat[a] < seat[b]
+    end)
+  end
+  return order
+end
+
+-- The front of a stack is the smallest box, so the ones behind it show as a
+-- few pixels of edge; all of them share the front's corner.
+local function place_stack(entry, x, y, w, h)
+  local members = entry.targets
+  local depth = math.min(#members, cfg.stack_spread)
+  for i, t in ipairs(members) do
+    local back = math.min(depth, i)
+    local d = (depth - back) * cfg.stack_offset
+    t:place({ x = x, y = y, w = w - d, h = h - d })
+  end
+end
+
 -- With the thumbnails all on one side they sit in a single column against that
 -- edge, the way Stage Manager stacks them. A thumbnail is as big as the strip
 -- is wide and no bigger; once the column is too short for that they shrink to
 -- share its height, so more windows mean smaller thumbnails.
 -- `inner` is the edge of the strip; `dir` is -1 (right side) or 1.
-local function fill_column(targets, area, inner, strip_w, dir, aspect)
-  local n = #targets
+local function fill_column(entries, area, inner, strip_w, dir, aspect)
+  local n = #entries
   if n == 0 or strip_w <= 0 then
     return
   end
@@ -345,8 +430,8 @@ local function fill_column(targets, area, inner, strip_w, dir, aspect)
   local tw = th * aspect
   local x = dir < 0 and (inner - tw) or inner
   local y = area.y + (area.h - n * th) / 2
-  for j, t in ipairs(targets) do
-    t:place({ x = x, y = y + (j - 1) * th, w = tw, h = th })
+  for j, entry in ipairs(entries) do
+    place_stack(entry, x, y + (j - 1) * th, tw, th)
   end
 end
 
@@ -449,12 +534,34 @@ hl.layout.register("stage", {
     end
 
     -- Alternate sides so both stay balanced; slot order fixes the positions.
-    -- A single side keeps slot order, which is then also the order on screen.
-    local left, right = {}, {}
-    for k, t in ipairs(side) do
-      local to_left = cfg.thumb_side == "left" or (cfg.thumb_side == "both" and k % 2 == 1)
-      local list = to_left and left or right
-      list[#list + 1] = t
+    -- A single side keeps slot order, which is then also the order on screen,
+    -- and groups the windows of an app into one entry. The app in the middle
+    -- is in the primary zone, so it is pulled out of the strip entirely.
+    local one_side = cfg.thumb_side == "left" or cfg.thumb_side == "right"
+    local parked, left, right = {}, {}, {}
+    if one_side and cfg.stack_by_app then
+      local middle_key = middle and app_key(middle.window) or ""
+      local visible = {}
+      for _, t in ipairs(side) do
+        if middle_key ~= "" and app_key(t.window) == middle_key then
+          parked[#parked + 1] = t
+        else
+          visible[#visible + 1] = t
+        end
+      end
+      for _, t in ipairs(parked) do
+        show_full(t)
+      end
+      local into = cfg.thumb_side == "left" and left or right
+      for _, entry in ipairs(stacks(visible, ws_id)) do
+        into[#into + 1] = entry
+      end
+    else
+      for k, t in ipairs(side) do
+        local to_left = cfg.thumb_side == "left" or (cfg.thumb_side == "both" and k % 2 == 1)
+        local list = to_left and left or right
+        list[#list + 1] = t
+      end
     end
     local aspect = thumb_w / area.h
 
@@ -469,6 +576,10 @@ hl.layout.register("stage", {
     elseif cfg.thumb_side == "right" and #right > 0 then
       need = area.h / #right * aspect
       right_w = math.min(right_w, need)
+    elseif one_side then
+      -- Every window of the app in the middle is parked behind it, so there is
+      -- no column at all and the middle takes the lot.
+      left_w, right_w = 0, 0
     end
     -- The share at which the strip is exactly what the column needs: the
     -- resize keys stop here, where the middle window stops shrinking.
@@ -480,6 +591,11 @@ hl.layout.register("stage", {
     if middle then
       show_full(middle)
       middle:place({ x = area.x + left_w, y = area.y, w = mid_w, h = area.h })
+    end
+    -- The middle app's other windows sit in the same box behind it: Alt+Tab
+    -- still walks them, and focusing one brings it to the front in place.
+    for _, t in ipairs(parked) do
+      t:place({ x = area.x + left_w, y = area.y, w = mid_w, h = area.h })
     end
 
     if cfg.thumb_side == "left" then
@@ -657,6 +773,7 @@ end
 
 -- swap_in plus the flash, for swaps the user caused
 local function swap_and_flash(ws, list, id)
+  touch(ws.id, id)
   local old = list[1]
   swap_in(list, id)
   if old and old ~= id then
