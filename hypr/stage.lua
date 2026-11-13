@@ -436,17 +436,12 @@ hl.layout.register("stage", {
       local list = to_left and left or right
       list[#list + 1] = t
     end
+    -- Columns are anchored at the edge facing the middle window and get
+    -- smaller going outward, so the biggest thumbnail is the one next to the
+    -- middle and the far edge holds the smallest.
     local aspect = thumb_w / area.h
-    if cfg.thumb_side == "left" then
-      -- Anchored at the edge, so any room a column can't use stays next to
-      -- the middle window instead of pushing the thumbnails inwards.
-      fill_side(left, area, area.x, left_w, 1, aspect)
-    elseif cfg.thumb_side == "right" then
-      fill_side(right, area, area.x + area.w, right_w, -1, aspect)
-    else
-      fill_side(left, area, area.x + left_w, left_w, -1, aspect)
-      fill_side(right, area, area.x + area.w - right_w, right_w, 1, aspect)
-    end
+    fill_side(left, area, area.x + left_w, left_w, -1, aspect)
+    fill_side(right, area, area.x + area.w - right_w, right_w, 1, aspect)
   end),
 
   layout_msg = function(_, msg)
