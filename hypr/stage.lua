@@ -264,7 +264,7 @@ end
 -- more are clearly better): a few windows get one column of big thumbnails, and more columns only
 -- appear once a column would get too crowded.
 -- `inner` is the x of the edge facing the middle; `dir` is -1 (left) or 1.
-local function fill_side(targets, area, inner, side_w, dir, aspect)
+local function fill_side(targets, area, inner, side_w, dir, aspect, outer_first)
   local n = #targets
   if n == 0 then
     return
@@ -306,11 +306,37 @@ local function fill_side(targets, area, inner, side_w, dir, aspect)
   end
 
   local caps = capacities(best.w1, best.cols)
+
+  -- How many thumbnails each column gets. Normally the inner column fills
+  -- first, which keeps the two-sided layout as it was. With the thumbnails on
+  -- one side the stack grows at the far edge instead: the outer columns take
+  -- as many as they hold and the column beside the middle window keeps the
+  -- last ones, so the smallest column is the deepest.
+  local counts
+  if outer_first then
+    counts = {}
+    for c = 1, best.cols do
+      counts[c] = 1
+    end
+    local left = n - best.cols
+    for c = best.cols, 2, -1 do
+      local add = math.min(caps[c] - 1, left)
+      counts[c] = counts[c] + add
+      left = left - add
+    end
+    counts[1] = counts[1] + left
+  end
+
   local x, i, w = inner, 1, best.w1
   for c = 1, best.cols do
-    local count = math.min(caps[c], n - i + 1)
-    if c == best.cols then
-      count = n - i + 1 -- rounding: the last column takes what's left
+    local count
+    if counts then
+      count = counts[c]
+    else
+      count = math.min(caps[c], n - i + 1)
+      if c == best.cols then
+        count = n - i + 1 -- rounding: the last column takes what's left
+      end
     end
     local th = math.min(w / aspect, area.h / math.max(count, 1))
     local tw = th * aspect
@@ -440,8 +466,9 @@ hl.layout.register("stage", {
     -- smaller going outward, so the biggest thumbnail is the one next to the
     -- middle and the far edge holds the smallest.
     local aspect = thumb_w / area.h
-    fill_side(left, area, area.x + left_w, left_w, -1, aspect)
-    fill_side(right, area, area.x + area.w - right_w, right_w, 1, aspect)
+    local outer_first = cfg.thumb_side ~= "both"
+    fill_side(left, area, area.x + left_w, left_w, -1, aspect, outer_first)
+    fill_side(right, area, area.x + area.w - right_w, right_w, 1, aspect, outer_first)
   end),
 
   layout_msg = function(_, msg)
