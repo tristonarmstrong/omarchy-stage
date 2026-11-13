@@ -48,6 +48,18 @@ do
   check(ok, "the pile stays in the strip" .. (ok and "" or (": " .. tostring(why))))
 end
 
+-- With the middle focused, grouping takes the window it was swapped with, so
+-- clicking a window and pressing the key groups the two you were just using.
+do
+  local t = h.load({ classes = { "chromium", "foot", "foot" } }):recalc()
+  t.set_active(2)
+  t.M.promote()
+  t:recalc()
+  t:group():recalc() -- still on the promoted window, no arrow focus
+  check(t.middle_id() == 2, "the clicked window is still the middle")
+  check(#t.entries() == 1, "the window it swapped with joined its group")
+end
+
 -- A group can be taken apart again.
 do
   local t = h.load({ classes = { "chromium", "foot", "foot" } }):recalc()

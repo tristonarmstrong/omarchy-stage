@@ -1043,7 +1043,16 @@ function M.group()
     return
   end
   local rec = group_of_window(ws.id, middle_id) or group_create(ws.id, middle_id)
-  group_join(ws.id, w.stable_id, rec)
+  -- Clicking a window brings it into the middle, so with the middle focused
+  -- there is nothing else selected: group it with the window used before it,
+  -- which is the one it was swapped with.
+  local other = w.stable_id
+  if other == middle_id then
+    other = list[2]
+  end
+  if other and other ~= middle_id then
+    group_join(ws.id, other, rec)
+  end
   relayout_soon()
 end
 

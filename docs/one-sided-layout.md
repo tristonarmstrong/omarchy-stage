@@ -64,9 +64,16 @@ something you make:
 | `SUPER + CTRL + SHIFT + G` | take the focused window back out; a group of one is just a window again |
 | `SUPER + SHIFT + T` | tile the group in the middle, or stack it again |
 
-So the flow is: bring one window into the middle, focus another thumbnail, press
-`SUPER + CTRL + G`, and the two are now one entry. Groups are per workspace and
-last as long as their windows do.
+Two ways to use it, depending on what has focus:
+
+- Nothing else selected (the window in the middle has focus, e.g. right after
+  clicking a thumbnail): the key groups the middle with the window it was
+  swapped with, so clicking a window and pressing the key groups the two you
+  were just using.
+- A thumbnail focused with `SUPER + arrows` (which moves focus without promoting
+  anything): the key puts that window into the middle's group.
+
+Groups are per workspace and last as long as their windows do.
 
 **In the column** a group is one slot holding a pile: its windows share the
 slot's corner, the one used last at the front with the smallest box, and each
@@ -163,8 +170,9 @@ Kept here so the gaps are a decision rather than an oversight:
   is.
 - A group belongs to one workspace and is forgotten when its windows close or
   the session restarts, like the slot order itself.
-- The group in the middle is the anchor for `SUPER + CTRL + G`: to group two
-  windows you bring one into the middle first, rather than selecting two.
+- The window in the middle is the anchor for `SUPER + CTRL + G`, so there is no
+  way to group two windows that are both in the column without bringing one of
+  them forward first.
 - Miniature thumbnails (the `stagethumbs` plugin) need Hyprland's function
   hooks, which only exist on x86_64. On other architectures the plugin cannot
   load, `stage-service.sh` notices once per boot, and thumbnails stay plain
