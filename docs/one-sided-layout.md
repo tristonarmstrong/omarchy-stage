@@ -107,6 +107,18 @@ order on screen, so it walks slots 2..n.
 - The slot list, swapping, the switcher, the resize handling and the highlight
   tags are shared with the two-sided layout.
 
+## Fullscreen and windows that leave
+
+A fullscreen window takes the monitor from Hyprland itself, so the column is
+simply covered and comes back when the window leaves fullscreen; the layout
+does not need to know about it.
+
+A window moved to a special workspace (the scratchpad, `SUPER + ALT + S`) is
+not a window of the workspace any more, so it is not in the column and not
+parked behind the middle either: `ALT + TAB` and the layout stop seeing it
+until it comes back. Quitting an app empties its stack, and closing the last
+window of an app removes the slot altogether.
+
 ## Limitations
 
 - The strip is limited to one side's worth, so a very narrow middle window is
