@@ -110,8 +110,9 @@ folder, or `~/.config/hypr/stagethumbs/` for a manual install).
 ## Tuning
 
 The `cfg` table at the top of `hypr/stage.lua` holds the knobs: which side(s)
-the thumbnails are on, the group pile (`stack_offset`, `stack_spread`) and how
-many entries the column holds (`stack_max`), middle window aspect and min/max
+the thumbnails are on, the group pile (`stack_offset`, `stack_spread`), how far
+the windows behind a stacked group show (`stack_deck`) and how many entries the
+column holds (`stack_max`), middle window aspect and min/max
 share of the screen, thumbnail opacity, the selection border width and how long
 the swap highlight lasts. With the plugin, edit
 `~/.config/omarchy/plugins/io.github.sulejman.stage/hypr/stage.lua` and run

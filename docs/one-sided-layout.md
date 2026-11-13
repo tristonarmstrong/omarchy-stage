@@ -64,6 +64,9 @@ something you make:
 | `SUPER + CTRL + SHIFT + G` | take the focused window back out; a group of one is just a window again |
 | `SUPER + SHIFT + T` | tile the group in the middle, or stack it again |
 
+A stack in the middle is not invisible: the window in front is inset, and the
+ones behind it show as a ring around it.
+
 Two ways to use it, depending on what has focus:
 
 - Nothing else selected (the window in the middle has focus, e.g. right after
@@ -85,8 +88,8 @@ slot's corner, the one used last at the front with the smallest box, and each
 one behind it a `cfg.stack_offset` (8 px) wider and taller, up to
 `cfg.stack_spread` (3) layers. Hyprland draws the window focused last on top,
 so the front has to be the window used last; the layout tracks that per
-workspace where the swaps happen. A pile that got this wrong would hide behind
-its own back.
+workspace wherever focus lands, swaps and the arrows alike. A pile that got
+this wrong would hide behind its own back.
 
 **In the middle** the group leaves the column entirely and takes the primary
 zone, in one of two modes:
@@ -94,7 +97,14 @@ zone, in one of two modes:
 - **stacked** (default): the front window at full size, its group's other
   windows in the same box behind it. `ALT + TAB` walks them and brings each one
   forward in place, so switching between the full versions of a group's windows
-  happens in the primary zone.
+  happens in the primary zone. Stacked windows all fill the zone, so the front
+  one is inset `cfg.stack_deck` (12 px) on every side and the ones behind it
+  show as a ring of their own edge — that ring is the only thing on screen
+  saying there is more than one window there. The rings step back towards the
+  zone's edge one `stack_deck` per layer, up to `cfg.stack_spread`; past that
+  the deeper windows share the back. Hyprland draws the window focused last on
+  top, so the front of a stack is the window used last, and the ring follows
+  the window you last switched to.
 - **tiled** (`SUPER + SHIFT + T`): the primary zone splits between the group's
   windows — side by side for two or three, a grid for more — so a group of
   terminals can all be watched at once.
@@ -171,6 +181,14 @@ not covered twice.
 - **A pile, not a badge.** The front of a pile is the window used last, smaller
   than the ones behind it, so the depth shows as a few pixels of edge. There is
   no counter to draw.
+- **A full-size stack shows a ring, not a badge.** A stacked group's windows all
+  fill the primary zone and cover each other exactly, so without something the
+  middle looks like one window and the rest are a secret. Insetting the front by
+  `stack_deck` on every side leaves a ring of the window behind it, which is the
+  same idea as the column pile scaled up to a full window — and it says how
+  deep the stack is, which a colour or an icon could not do. The cost is that
+  the front window is 12 px smaller than the zone per layer, and that the ring
+  moves with `ALT + TAB`.
 - **Overflow parks instead of shrinking forever.** Past `stack_max` entries the
   least recently used go behind the middle window rather than becoming
   unreadable slivers, which is also what Stage Manager does.
@@ -208,7 +226,9 @@ Kept here so the gaps are a decision rather than an oversight:
   deliberate; the alternative is a gap between the column and the window.
 - The pile shows as a few pixels of edge, so it reads better with a wallpapered
   background than against a busy window; there is no badge to say how deep it
-  is.
+  is. The same goes for the ring on a full-size stack: it is the windows' own
+  content you see, so a stack of identical-looking windows reads more faintly
+  than a stack of different ones.
 - A group belongs to one workspace and is forgotten when its windows close or
   the session restarts, like the slot order itself.
 - The window in the middle is the anchor for `SUPER + CTRL + G`, so there is no

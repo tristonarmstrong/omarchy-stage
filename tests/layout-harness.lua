@@ -90,7 +90,12 @@ function H.load(opts)
     dispatch = function() end,
     dsp = {
       layout = function(m) return m end,
-      focus = function(o) return o end,
+      focus = function(o)
+        if type(o) == "table" and o.window then
+          state.active = o.window
+        end
+        return o
+      end,
       window = { tag = function() end, set_prop = function() end },
     },
     exec_cmd = function() end,
@@ -140,6 +145,12 @@ function H.load(opts)
 
   function t.recalc()
     layout.recalculate({ area = AREA, targets = targets })
+    -- Hyprland tells the window where it was put, which is what the arrow keys
+    -- read to work out what is to the left of what.
+    for _, tg in ipairs(targets) do
+      tg.window.at = { x = tg.box.x, y = tg.box.y }
+      tg.window.size = { x = tg.box.w, y = tg.box.h }
+    end
     return t
   end
 
@@ -161,6 +172,12 @@ function H.load(opts)
     return t
   end
 
+  -- The arrow keys: move focus without promoting, the way SUPER + LEFT does.
+  function t.focus(dir)
+    M.focus(dir)()
+    return t
+  end
+
   function t.group()
     M.group()
     return t
@@ -174,10 +191,6 @@ function H.load(opts)
   function t.tile()
     M.group_tile()
     return t
-  end
-
-  function t.middle()
-    return targets[1].box
   end
 
   -- The window in the middle, according to the layout's slot order.
@@ -196,16 +209,44 @@ function H.load(opts)
     return targets[1].box
   end
 
-  -- Column entries: windows whose box starts at the strip's edge, grouped by
-  -- the corner they share. Parked windows and the primary zone are excluded.
+  -- The primary zone: the biggest box on the workspace. With nothing grouped
+  -- that is the middle window; with a stack it is the box the ones behind it
+  -- fill, which is still the width the middle window had on its own.
+  function t.zone()
+    local out
+    for _, tg in ipairs(targets) do
+      local b = tg.box
+      if not out or b.w > out.w then
+        out = b
+      end
+    end
+    return out
+  end
+
+  -- A box that stands in the primary zone: the middle window, the rest of its
+  -- deck, and anything parked behind it.
+  local function in_zone(box)
+    local z = t.zone()
+    return box.x == z.x and box.y == z.y and box.w == z.w and box.h == z.h
+  end
+
+  -- A thumbnail: narrower than the zone, against one of the strip's edges. The
+  -- front of a deck is narrower too, but it is inset, so it is not in the strip.
+  local function in_column(box)
+    local z = t.zone()
+    if box.w >= z.w or box.h >= z.h then
+      return false
+    end
+    return box.x == AREA.x or box.x + box.w == AREA.x + AREA.w
+  end
+
+  -- Column entries: boxes outside the primary zone, grouped by the corner they
+  -- share. Parked windows and the middle window are part of the zone.
   function t.entries()
     local by_corner, order = {}, {}
     for i, tg in ipairs(targets) do
       local b = tg.box
-      -- A lone middle window fills the area and also starts at the strip's
-      -- edge, so anything as wide as the area is the primary zone.
-      local in_column = b.x == t.areas.x and b.w < t.areas.w - 1
-      if in_column then
+      if in_column(b) then
         local key = string.format("%.0f:%.0f", b.x, b.y)
         if not by_corner[key] then
           by_corner[key] = { x = b.x, y = b.y, targets = {}, w = 0 }
@@ -226,14 +267,10 @@ function H.load(opts)
   -- How many columns the thumbnails sit in: one for a single side, two for the
   -- two-sided layout.
   function t.columns()
-    local m = t.middle()
-    local mid = t.middle_id()
     local seen, n = {}, 0
     for _, tg in ipairs(targets) do
-      local b = tg.box
-      local parked = tg.window.stable_id ~= mid and b.x == m.x and b.y == m.y and b.w == m.w
-      if tg.window.stable_id ~= mid and not parked then
-        local key = math.floor(b.x)
+      if in_column(tg.box) then
+        local key = math.floor(tg.box.x)
         if not seen[key] then
           seen[key] = true
           n = n + 1
@@ -243,34 +280,61 @@ function H.load(opts)
     return n
   end
 
-  -- Windows other than the middle that share the middle window's box.
+  -- The middle's group as it is drawn: boxes sorted front first, which is the
+  -- smallest, inset one.
+  function t.deck()
+    local g = M.middle_group(1)
+    local out = {}
+    if not g then
+      return out
+    end
+    for _, tg in ipairs(targets) do
+      for _, id in ipairs(g.ids) do
+        if tg.window.stable_id == id then
+          out[#out + 1] = tg
+        end
+      end
+    end
+    table.sort(out, function(a, b) return a.box.w < b.box.w end)
+    return out
+  end
+
+  -- Windows parked behind the middle: in the primary zone, but not the middle
+  -- window and not one of its group.
   function t.parked()
-    local m = t.middle()
     local mid = t.middle_id()
+    local g = M.middle_group(1)
+    local in_group = {}
+    if g then
+      for _, id in ipairs(g.ids) do
+        in_group[id] = true
+      end
+    end
     local n = 0
     for _, tg in ipairs(targets) do
-      local b = tg.box
-      if tg.window.stable_id ~= mid and b.x == m.x and b.y == m.y and b.w == m.w then
+      local id = tg.window.stable_id
+      if id ~= mid and not in_group[id] and in_zone(tg.box) then
         n = n + 1
       end
     end
     return n
   end
 
-  -- Every thumbnail box inside the strip and not overlapping the middle.
+  -- Every thumbnail box inside the strip, and not running into the zone.
   function t.in_bounds()
-    local m = t.middle()
-    for i = 2, #targets do
-      local b = targets[i].box
-      if b.x < AREA.x or b.y < AREA.y then
-        return false, "box starts outside the area"
-      end
-      if b.x + b.w > AREA.x + AREA.w or b.y + b.h > AREA.y + AREA.h then
-        return false, "box ends outside the area"
-      end
-      local parked = b.x == m.x and b.y == m.y and b.w == m.w
-      if not parked and b.x + b.w > m.x then
-        return false, "box overlaps the middle window"
+    local z = t.zone()
+    for _, tg in ipairs(targets) do
+      local b = tg.box
+      if in_column(b) then
+        if b.x < AREA.x or b.y < AREA.y then
+          return false, "box starts outside the area"
+        end
+        if b.x + b.w > AREA.x + AREA.w or b.y + b.h > AREA.y + AREA.h then
+          return false, "box ends outside the area"
+        end
+        if b.x + b.w > z.x then
+          return false, "box overlaps the middle window"
+        end
       end
     end
     return true

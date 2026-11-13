@@ -64,6 +64,7 @@ local cfg = {
   -- apart, the one used last at the front of the pile.
   stack_offset = 8, -- how far each window behind the front of its pile shows
   stack_spread = 3, -- ...for at most this many layers; deeper ones share the back
+  stack_deck = 12, -- ...and how far the ones behind a full-size stack show, on every side
   stack_max = 8, -- most groups and windows the column holds; the rest wait behind the middle
 
   thumb_opacity = 0.72, -- thumbnails at rest; the selected or hovered one is fully opaque
@@ -528,6 +529,21 @@ local function place_stack(entry, x, y, w, h)
   end
 end
 
+-- The same idea at full size: a stacked group fills the primary zone, and the
+-- window in front is inset a little on every side, so the ones behind it show
+-- as a ring of their own edge. The windows are all full size, so without that
+-- ring there is nothing on screen to say the stack is more than one window.
+-- Inset from every side rather than from the corner, because the middle is in
+-- the middle.
+local function place_deck(members, box)
+  local depth = math.min(#members, cfg.stack_spread)
+  for i, t in ipairs(members) do
+    local back = math.min(depth, i)
+    local d = (depth - back) * cfg.stack_deck
+    t:place({ x = box.x + d, y = box.y + d, w = box.w - 2 * d, h = box.h - 2 * d })
+  end
+end
+
 -- With the thumbnails all on one side they sit in a single column against that
 -- edge, the way Stage Manager stacks them. A thumbnail is as big as the strip
 -- is wide and no bigger; once the column is too short for that they shrink to
@@ -747,10 +763,28 @@ hl.layout.register("stage", {
       end
       if middle_rec and middle_rec.tiled and #members > 1 then
         place_grid(members, box.x, box.y, box.w, box.h)
+      elseif middle_rec and #members > 1 then
+        -- Stacked: every window of the group fills the primary zone, the one
+        -- used last in front and inset, the rest behind it. Alt+Tab walks them
+        -- and each comes forward in place; the ring of edge around the front is
+        -- what says the stack is more than one window. The order is by use,
+        -- because Hyprland draws the window focused last on top: the front of
+        -- the deck has to be the window used last, or the deck hides itself.
+        local seat = {}
+        for i, t in ipairs(members) do
+          seat[t] = i
+        end
+        table.sort(members, function(a, b)
+          local ra, rb = rank(ws_id, a.window.stable_id), rank(ws_id, b.window.stable_id)
+          if ra ~= rb then
+            return ra < rb
+          end
+          return seat[a] < seat[b]
+        end)
+        place_deck(members, box)
       else
-        -- Stacked: the middle window in front, the rest of its group in the
-        -- same box behind it. Alt+Tab still walks them, and focusing one
-        -- brings it to the front in place.
+        -- A window on its own, or a group of one: the zone exactly, so there
+        -- is no ring to mistake for a stack.
         for _, t in ipairs(members) do
           t:place(box)
         end
@@ -1087,6 +1121,17 @@ function M.slots(ws_id)
   return slots_for(ws_id)
 end
 
+-- The group in the middle: its window ids in the order they were added, and
+-- whether it is tiled. Nil when the middle window is on its own.
+function M.middle_group(ws_id)
+  local middle_id = slots_for(ws_id)[1]
+  local rec = middle_id and group_of_window(ws_id, middle_id)
+  if not rec then
+    return nil
+  end
+  return { id = middle_id, ids = rec.ids, tiled = rec.tiled }
+end
+
 function M.promote()
   local w = hl.get_active_window()
   local ws = stage_focused()
@@ -1171,6 +1216,10 @@ function M.focus(dir)
     end
 
     if best then
+      -- Moving the highlight with the arrows is not a promotion, but the
+      -- window is still the one in use: piles and decks keep the focused
+      -- window in front, because that is the one drawn on top.
+      touch(ws.id, best.stable_id)
       navigating = true
       hl.dispatch(hl.dsp.focus({ window = best }))
       navigating = false
