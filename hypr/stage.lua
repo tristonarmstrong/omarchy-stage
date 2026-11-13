@@ -264,7 +264,7 @@ end
 -- more are clearly better): a few windows get one column of big thumbnails, and more columns only
 -- appear once a column would get too crowded.
 -- `inner` is the x of the edge facing the middle; `dir` is -1 (left) or 1.
-local function fill_side(targets, area, inner, side_w, dir, aspect, outer_first)
+local function fill_side(targets, area, inner, side_w, dir, aspect)
   local n = #targets
   if n == 0 then
     return
@@ -307,36 +307,11 @@ local function fill_side(targets, area, inner, side_w, dir, aspect, outer_first)
 
   local caps = capacities(best.w1, best.cols)
 
-  -- How many thumbnails each column gets. Normally the inner column fills
-  -- first, which keeps the two-sided layout as it was. With the thumbnails on
-  -- one side the stack grows at the far edge instead: the outer columns take
-  -- as many as they hold and the column beside the middle window keeps the
-  -- last ones, so the smallest column is the deepest.
-  local counts
-  if outer_first then
-    counts = {}
-    for c = 1, best.cols do
-      counts[c] = 1
-    end
-    local left = n - best.cols
-    for c = best.cols, 2, -1 do
-      local add = math.min(caps[c] - 1, left)
-      counts[c] = counts[c] + add
-      left = left - add
-    end
-    counts[1] = counts[1] + left
-  end
-
   local x, i, w = inner, 1, best.w1
   for c = 1, best.cols do
-    local count
-    if counts then
-      count = counts[c]
-    else
-      count = math.min(caps[c], n - i + 1)
-      if c == best.cols then
-        count = n - i + 1 -- rounding: the last column takes what's left
-      end
+    local count = math.min(caps[c], n - i + 1)
+    if c == best.cols then
+      count = n - i + 1 -- rounding: the last column takes what's left
     end
     local th = math.min(w / aspect, area.h / math.max(count, 1))
     local tw = th * aspect
@@ -348,6 +323,25 @@ local function fill_side(targets, area, inner, side_w, dir, aspect, outer_first)
     i = i + count
     x = x + dir * w
     w = w * cfg.decay
+  end
+end
+
+-- With the thumbnails all on one side they sit in a single column against that
+-- edge, the way Stage Manager stacks them. A thumbnail is as big as the strip
+-- is wide and no bigger; once the column is too short for that they shrink to
+-- share its height, so more windows mean smaller thumbnails.
+-- `inner` is the edge of the strip; `dir` is -1 (right side) or 1.
+local function fill_column(targets, area, inner, strip_w, dir, aspect)
+  local n = #targets
+  if n == 0 or strip_w <= 0 then
+    return
+  end
+  local th = math.min(area.h / n, strip_w / aspect)
+  local tw = th * aspect
+  local x = dir < 0 and (inner - tw) or inner
+  local y = area.y + (area.h - n * th) / 2
+  for j, t in ipairs(targets) do
+    t:place({ x = x, y = y + (j - 1) * th, w = tw, h = th })
   end
 end
 
@@ -462,13 +456,15 @@ hl.layout.register("stage", {
       local list = to_left and left or right
       list[#list + 1] = t
     end
-    -- Columns are anchored at the edge facing the middle window and get
-    -- smaller going outward, so the biggest thumbnail is the one next to the
-    -- middle and the far edge holds the smallest.
     local aspect = thumb_w / area.h
-    local outer_first = cfg.thumb_side ~= "both"
-    fill_side(left, area, area.x + left_w, left_w, -1, aspect, outer_first)
-    fill_side(right, area, area.x + area.w - right_w, right_w, 1, aspect, outer_first)
+    if cfg.thumb_side == "left" then
+      fill_column(left, area, area.x, left_w, 1, aspect)
+    elseif cfg.thumb_side == "right" then
+      fill_column(right, area, area.x + area.w, right_w, -1, aspect)
+    else
+      fill_side(left, area, area.x + left_w, left_w, -1, aspect)
+      fill_side(right, area, area.x + area.w - right_w, right_w, 1, aspect)
+    end
   end),
 
   layout_msg = function(_, msg)
